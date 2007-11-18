@@ -44,6 +44,9 @@
 (use-modules (ice-9 posix))
 ;; Provides POSIX pipes.
 (use-modules (ice-9 popen))
+;; receive and let-values
+(use-modules (ice-9 receive))
+(use-modules (srfi srfi-11))
 
 ;;; Display functions
 ;; Prints version and basic copyright information.
@@ -251,13 +254,15 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;;; (gcc|binutils)-config handlers
 ;; much, MUCH later.
 ;gcc-config i686-pc-linux-gnu-4.1.2
+;$(source /etc/paludis/bashrc 2>/dev/null; echo $CHOST)
+;(match:substring (string-match "^(sys-devel/gcc-)([.0-9r]+(-r[0-9])?)(.*)$" package) 2)
 
 ;;; Paludis handlers
 ;; Generates a command  that can be passed as an argument to system-execute-action to build a
 ;; package.
 ;; <package> must be a string.
 ;; Returns a string.
-(define (paludis-command-generator package)
+(define (paludis-generate-command package)
   (let ((command "PALUDIS_OPTIONS=\"\" paludis "))
     (if pretend
 	(set! command (string-append command "-pi1 "))
@@ -267,13 +272,13 @@ If you have a better idea, I'm open to suggestions.\n\n"))
     (set! command (string-append command package))
     command))
 ;; Given a target, generates a list of the packages to be installed.
-;; <target> must be a string.
+;; <target> must be a string. It better be a valid set or pakage, yo =P
 ;; Returns a list, '() in case the target is invalid - or in case of any other failure along the
 ;; way, tbqh.
 ;; FIXME: Gotta figure out a way to make it more debuggable. How expensive would it be to
 ;; implement w. inbuilt Regexp & String-ops?
 ;; Guile bidirectional pipes do not a good text filter make.
-(define (paludis-list-generator target)
+(define (paludis-extract-packages target upgrade pre-dependencies)
   (let* ((command (string-append "PALUDIS_OPTIONS=\"\" "
 				 "paludis -pi "
 				 (if upgrade
@@ -291,8 +296,17 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 						     '()))
       (append! package-list `(,(symbol->string package))))))
 
+;;; Action-list execution
+;; Iterates over the action list, saving it to disk before running it.
+(define (execute-action-list action-list) "stub")
+
+;;; Generator -  does what it says on the box ;)
+;; Generates a list of actions and passes it to executor.
+(define (generate-action-list toolchain system everything upgrade pre-dependencies checks) "stub")
+
 ;;; Argument parser
 (define (parse-arguments)
+
   (let* ((toolchain-option?
 	  (lambda (arg) (regexp-match?
 		    (string-match "^((headers|gcc|binutils|glibc){1}(-single)?)$" arg))))
@@ -329,7 +343,12 @@ If you have a better idea, I'm open to suggestions.\n\n"))
     ;; If we got told to resume, read the state file into the alist.
     (if resume-wanted
 	(begin (if verbose (display "\nResuming...\n"))
-	       (resume-read))
+	       (let-values* ((() ()))
+			    )
+	       (resume-read)
+	       (if verbose-wanted
+		   (begin (newline) (print-state) (newline)))
+	       (executor))
 	;; I should create bidirectional conversion functions for these, so I can get rid
 	;; of these inline (cond)s...
 	(set! pretend pretend-wanted)
@@ -341,12 +360,13 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 				  #t
 				  system-wanted))
 	(set! (state 'toolchain) toolchain-wanted)
-	(set! (state 'progress) "Options Parsed"))
-    (if verbose-wanted
-	(begin (newline) (print-state) (newline)))))
+	(set! (state 'progress) "Options Parsed")
+	(if verbose-wanted
+	    (begin (newline) (print-state) (newline)))
+	(generator))))
 
 ;;; The world is burning, run!
-(define (main)
+(define (check-environment)
   (if (not (resume-check)) ; check that the state-dir variable points to a valid location.
       (begin (display "\nThere is a problem with the state directory,\n")
 	     (display "and/or the properize.state file therein.\n")
@@ -355,11 +375,10 @@ If you have a better idea, I'm open to suggestions.\n\n"))
   (if (null? (cdr (command-line))) ; if called w. no arguments, print help and exit.
       (begin (print-header) (print-help) (exit))
       (begin (if verbose (display "\nParsing command-line...\n"))
-	     (parse-arguments)))
+	     (parse-arguments))))
   ;; bigass conditional or iterator or something (have to think about it)
   ;; that generates all the applists, makes a todo for the current stage,
   ;; and starts the first stage. Probably best not to inline it.
-  )
 
 ;;; Program starts on last line *g*
-(main)
+(check-environment)
