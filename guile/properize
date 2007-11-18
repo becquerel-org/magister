@@ -1,0 +1,365 @@
+#!/usr/bin/env guile
+!# ;; -*- mode: Scheme;-*-
+;;;; Copyright (c) 2007 Leonardo Valeri Manera <lvalerimanera>@{NOSPAM}<google.com>
+;;;; This program is licensed under the terms of the General Public License version 2.
+;;;; Based on the portage script emwrap.sh, (c) 2004-2007 Hiel Van Campen.
+
+;; PALUDIS_OPTIONS="" paludis -pi1 --dl-deps-default discard --show-reasons none --show-use-descriptions none --checks none $toolchain
+;; PALUDIS_OPTIONS="" paludis -pi1 --dl-deps-default discard --show-reasons none --show-use-descriptions none --checks none --resume-command-template /var/tmp/properize-resume system|everything
+
+;;; Load the configuration file
+;; FIXME: This is bloody dangerous, make a fucking parser already.
+;; FIXMETOO: Mebbe this should be below ze global var defs, hmmm?
+(load "/etc/properize.conf")
+(define debug #t)
+
+;;; Turn debugging on up here, so it takes effect immediately
+;;; if set in configuration file.
+(if debug
+    (debug-enable 'backtrace))
+
+;;; Global variables and constants
+;; The version of the application, duh.
+(define *properize-version* '(0 0 1))
+;; The earlist compatible version, as far as internal structure of the state alist goes
+(define *compatible-version* '(0 0 1))
+;; Happy happy joy joy... hey, perhaps a . should be prepended if
+;; (string=? *state-dir* (env home))? Discuss.
+(define *state-file* (string-append *state-dir* "/properize-resume"))
+;; Yay global variables, what is this, java???
+(define verbose #t)
+(define pretend #t)
+(define upgrade #t)
+(define pre-dependencies "discard")
+
+;;; Load necessary modules
+;; We need regular expressions.
+(use-modules (ice-9 regex))
+;; Getopt-long provides a method to parse standard UNIX-style command-line options.
+(use-modules (ice-9 getopt-long))
+;; Optional & Keyword arguments sugar. Mmmmm, sugar.
+(use-modules (ice-9 optargs))
+;; Provides interface to POSIX system calls.
+(use-modules (ice-9 posix))
+;; Provides POSIX pipes.
+(use-modules (ice-9 popen))
+
+;;; Display functions
+;; Prints version and basic copyright information.
+(define (print-header)
+  (begin (display "Properize v")
+	 (display (version->string *properize-version*))
+	 (display " (") (display (car (command-line))) (display ")\n")
+	 (display "Copyright (c) 2007 Leonardo Valeri Manera <lvalerimanera>@{NOSPAM}google.com\n")
+	 (display "This program is licensed under the terms of the GPL version 2.\n")
+	 (display "Based on the portage script emwrap.sh, (c) 2004-2007 Hiel Van Campen.\n\n")))
+;; Prints the good old --help dialogue.
+(define (print-help)
+  (display"\
+Usage: properize [OPTION] [SETS]
+Make installation consistent with toolchain.
+Example: properize -s
+       properize [OPTION] --resume
+Resume an interrupted operation.
+
+Option arguments must follow the option immediately if scpecified:
+  -f bar
+In the long form, both
+  --foo=bar
+and
+  --foo bar
+are valid.
+
+-General options
+  -v --version           Display version.
+  -h --help              Display this help.
+  -V --verbose           Print information about each step - useful for debugging.
+
+-Action options
+  -r --resume            Resume an interrupted operation.
+  -p --pretend           Pretend only.
+  -n --no-upgrades       Passes --dl-upgrade as-needed to paludis during set
+                         package-list generation.
+     --pre-dependencies=deptype
+                         Passes the supplied value as argument to
+                         --dl-installed-deps-pre to paludis *AS_IS*
+                         during set package-list generation.
+                         Defaults to \"discard\".
+
+-Set Package-list generation options
+  -t --toolchain[=TYPE]
+                         Rebuild toolchain. Optional argument defines the
+                         type of operation. See below.
+  -s --system[=all]      Rebuild set:system. Optional argument rebuilds
+                         toolchain as well
+  -e --everything[=all]  Rebuild set:everything. Optional argument rebuilds
+                         set:system as well.
+
+\"everything\" implies \"system\" implies \"toolchain\";
+This is not a general-operation wrapper script, it is merely
+intended to help in making one's installation consistent after
+a toolchain or flag change.
+During normal operation \"toolchain\" is subtracted from \"system\",
+and \"system\" from \"everything\", in order to remove unnecessary
+compilation and minimize execution time. This behaviour can be overridden
+by passing the \"all\" argument:
+
+  properize -s all --everything=all
+
+  properize --system all
+
+Various \"toolchain\" operations are available, the default can be overridden
+by passing their names as arguments to the toolchain option:
+
+  properize -set gcc-single
+
+  properize --system --toolchain=binutils-single
+
+and so on.
+
+The toolchain operation types, and the packages that will be rebuilt,
+in order, are:
+
+Full rebuilds:
+
+  headers          =\"linux-headers glibc binutils gcc glibc binutils gcc\" (default)
+  glibc            =\"glibc binutils gcc glibc binutils gcc\"
+  binutils|gcc     =\"binutils gcc binutils gcc\"
+
+Single builds:
+
+  headers-single        =\"linux-headers glibc binutils gcc\"
+  glibc-single          =\"glibc binutils gcc\"
+  binutils|gcc-single   =\"binutils gcc\"
+
+The default value can be overridden in the configuration file.
+
+Currently, the builds are lifted straight out of emwrap.sh,
+Copyright (c) 2004-2007 Hiel Van Campen.
+If you have a better idea, I'm open to suggestions.\n\n"))
+;; Prints the salient points of the current internal state, moderately prettily.
+(define (print-state)
+  (begin (display "State:")
+	 (display "\n  Toolchain: ") (display (state 'toolchain))
+	 (display "\n  System: ") (display (state 'system))
+	 (display "\n  Everything: ") (display (state 'everything))
+	 (display "\n  Progress: ") (display (state 'progress)) (newline)))
+
+;;; Convenience functions
+;; Takes a tripartite version, makes it printable.
+;; <version> must be a list of 3 numbers.
+;; Returns a string.
+(define (version->string version) (string-append (number->string (car version)) "."
+						 (number->string (cadr version)) "."
+						 (number->string (caddr version))))
+
+;;; Define the "state" alist, and the shortcut functions to read and write to its values
+;; Hashes sound nice, except opaque hashes can't be written to file, and concrete hashes are
+;; horribly buggy - empty cells all over the place.
+;; Alists might not be fast if they're huge, but they're fine for this - what will be large will
+;; be the cdr of some of the cells. Mise store those in vektorz?
+(define state-alist `((version . ,*properize-version*)
+		      (toolchain . 0)
+		      (toolchain-apps . (""))
+		      (system . 0)
+		      (system-apps . (""))
+		      (everything . 0)
+		      (everything-apps . (""))
+		      (progress . "Initilization")
+		      (todo . (""))))
+;; Getter/Setter for state-type alists
+;; Getter:
+;; <key> must be a symbol, a la 'bob.
+;; <obj> is optional, must be a symbol pointing to a state alist.
+;; Returns the value of the cell with the given key, or #f if it does not exist - which is only
+;; useful for reading resume states with possibly missing cells.
+;; Usage: (state <key> [<val>])
+;; Setter:
+;; <key> must be a symbol, a la 'bob.
+;; <val> is the value that will be dumped in the cdr of the cell, can be anything really.
+;; Usage: (set! (state <key>) <val>)
+(define state (make-procedure-with-setter
+	       ; Read from resume-file state-alists with this.
+	       ; Returns #f if the key is not present, for soft-falure on
+	       ; outdated resume-files that have usable data in other keys.
+	       (lambda* (key #:optional (obj state-alist))
+		   (let ((val (assoc key obj)))
+		     (if (boolean? val)
+			 #f
+			 (cdr val))))
+	       ; No changing values in the resume state, that's read-only =p
+	       ; All changes happen in the current state, which gets written
+	       ; to file before a package operation.
+	       (lambda* (key val)
+		   (set! obj (assoc-set! state-alist key val)))))
+
+;(set! state-alist (assoc-set! state-alist 'todo '((paludis . "gcc") (gcc-config . "4.1.2") (paludis . "glibc"))))
+;(equal? (caar (assoc-ref state-alist 'todo)) 'paludis) => #t
+
+;;; Resume-State reading and writing
+;; Simple check for the state-dir.
+;; Returns boolean; true if the dir is read/writeable and we can create files, and
+;; either the file does not exist, or it exists and we have read/write
+;; access on it, otherwise returns false.
+;; FIXME: must do better, eat more cake.
+(define (resume-check)
+  (if (and (access? *state-dir* (logior R_OK W_OK X_OK))
+	   (or (not (access? *state-file* F_OK))
+	       (access? *state-file (logior W_OK R_OK))))
+      #t
+      #f))
+;; Reads the alist from the state-file, and loads its values into the
+;; current state alist.
+;; If the version that created the file is below the last compatible version,
+;; error out and die.
+;; Returns undefined.
+;; FIXME: Needs predicates for the type of values in cells, mmmmaybe?
+(define (resume-read)
+  (let ((resume-alist (with-input-from-file *state-file* (lambda () (read)))))
+    (if (and (>= (car (state 'version resume-alist)) (car *compatible-version*))
+	     (>= (cadr (state 'version resume-alist)) (cadr *compatible-version*))
+	     (>= (caddr (state 'version resume-alist)) (caddr *compatible-version*)))
+	(do ((state-var-list '('version
+			       'toolchain
+			       'toolchain-apps
+			       'system
+			       'system-apps
+			       'everything
+			       'everything-apps
+			       'progress
+			       'todo) (cdr state-var-list)))
+	    ((null? state-var-list))
+	  (let ((state-var (car state-var-list)))
+	    (if (not (boolean? (state state-var resume-alist)))
+		(set! (state state-var) (state state-var resume-alist)))))
+	(begin (display "\nSorry, the resume file was created by an incompatible version of properize.\n")
+	       (exit)))))
+;; Nothing fancy, just dumps the current alist to file, packaged in a thunk
+;; for code readability.
+;; Returns undefined.
+(define (resume-write)
+      (with-output-to-file *state-file* (lambda () (write state-alist))))
+
+;;; General command handlers
+;; Encapsulate :eval-exit so we can simply run paludis-execute-action as a condition.
+;; <action> must be a string.
+;; Returns a boolean (obviously).
+(define (system-execute-action action)
+  (if (= 0 (status:exit-val (system action)))
+      #t
+      #f))
+
+;;; (gcc|binutils)-config handlers
+;; much, MUCH later.
+;gcc-config i686-pc-linux-gnu-4.1.2
+
+;;; Paludis handlers
+;; Generates a command  that can be passed as an argument to system-execute-action to build a
+;; package.
+;; <package> must be a string.
+;; Returns a string.
+(define (paludis-command-generator package)
+  (let ((command "PALUDIS_OPTIONS=\"\" paludis "))
+    (if pretend
+	(set! command (string-append command "-pi "))
+	(set! command (string-append command "-i ")))
+    (if upgrade
+	(set! command (string-append command "--dl-upgrade always ")))
+    (set! command (string-append command package))
+    command))
+;; Given a set, generates a list of packages in that set.
+;; <set> must be a string.
+;; Returns a list, '() in case the set has no packages - or in case of any other failure along the
+;; way, tbqh.
+;; FIXME: Gotta figure out a way to make it more debuggable. How expensive would it be to implement
+;; w. inbuilt Regexp & String-ops?
+;; Guile bidirectional pipes do not a good text filter make.
+(define (paludis-list-generator set)
+  (let ((port (open-input-pipe "paludis -pi --dl-reinstall always system | egrep \"\\[(([RN])|(U [-_.[:alnum:]]+))\\]\" | awk '{print $2}'"))
+	(package-list '("")))
+    (do ((package (read port) (read port)))
+	((eof-object? package) (close-pipe port) (if (not (null? (cdr package-list)))
+						     (cdr package-list)
+						     '()))
+      (append! package-list `(,(symbol->string package))))))
+
+;;; Argument parser
+(define (parse-arguments)
+  (let* ((set-option? (lambda (arg) (string=? "all" arg)))
+	 (toolchain-option? (lambda (arg)
+			      (regexp-match? (string-match "^((headers|gcc|binutils|glibc){1}(-single)?)$" arg))))
+	 (option-spec `((help (single-char #\h) (value #f))
+			(version (single-char #\v) (value #f))
+			(pretend (single-char #\p) (value #f))
+			(verbose (single-char #\V) (value #f))
+			(no-upgrades (single-char #\n) (value #f))
+			(pre-dependencies (value optional))
+			(resume (single-char #\r) (value #f))
+			(toolchain (single-char #\t) (value optional) (predicate ,toolchain-option?))
+			(system (single-char #\s) (value optional) (predicate ,set-option?))
+			(everything (single-char #\e) (value optional) (predicate ,set-option?))))
+	 (options (getopt-long (command-line) option-spec))
+	 (help-wanted (option-ref options 'help #f))
+	 (version-wanted (option-ref options 'version #f))
+	 (pretend-wanted (option-ref options 'pretend #t))
+	 (verbose-wanted (option-ref options 'verbose #t))
+	 (upgrade-wanted (not (option-ref options 'no-upgrades #f)))
+	 (pre-dependencies-wanted (option-ref options 'pre-dependencies "discard"))
+	 (resume-wanted (option-ref options 'resume #f))
+	 (toolchain-wanted (option-ref options 'toolchain #f))
+	 (system-wanted (option-ref options 'system #f))
+	 (everything-wanted (option-ref options 'everything #f)))
+    ;; Check for these before anything else.
+    (if help-wanted
+	(begin (print-header) (print-help) (exit)))
+    (if version-wanted
+	(begin (print-header) (exit)))
+    (if verbose-wanted (set! verbose #t))
+    ;; If we got told to resume, read the state file into the alist.
+    (if resume-wanted
+	(begin (if verbose (display "\nResuming...\n"))
+	       (resume-read))
+	;; I should create bidirectional conversion functions for these, so I can get rid
+	;; of these inline (cond)s...
+	(set! pretend pretend-wanted)
+	(set! upgrade upgrade-wanted)
+	(set! pre-dependecies pre-dependecies-wanted)
+	(set! (state 'toolchain) (cond ((eqv? toolchain-wanted #f) 0)
+				       ((eqv? toolchain-wanted #t) 1)
+				       ((string=? toolchain-wanted "headers") 2)
+				       ((string=? toolchain-wanted "headers-single") 3)
+				       ((string=? toolchain-wanted "glibc") 4)
+				       ((string=? toolchain-wanted "glibc-single") 5)
+				       ((or (string=? toolchain-wanted "gcc")
+					    (string=? toolchain-wanted "binutils")) 6)
+				       ((or (string=? toolchain-wanted "gcc-single")
+					    (string=? toolchain-wanted "binutils-single")) 7)))
+	(set! (state 'system) (cond ((eqv? system-wanted #f) 0)
+				    ((eqv? system-wanted #t) 1)
+				    ((string=? system-wanted "all") 2)))
+	(set! (state 'everything) (cond ((eqv? everything-wanted #f) 0)
+					((eqv? everything-wanted #t) 1)
+					((string=? everyting-wanted "all") 2)))
+	(set! (state 'progress) "Options Parsed"))
+    (if verbose-wanted
+	(begin (newline) (print-state) (newline)))))
+
+
+;;; The world is burning, run!
+(define (main)
+  (if (not (resume-check)) ; check that the state-dir variable points to a valid location.
+      (begin (display "\nThere is a problem with the state directory,\n")
+	     (display "and/or the properize.state file therein.\n")
+	     (display "Please check your configuration.\n")
+	     (exit)))
+  (if (null? (cdr (command-line))) ; if called w. no arguments, print help and exit.
+      (begin (print-header) (print-help) (exit))
+      (begin (if verbose (display "\nParsing command-line...\n"))
+	     (parse-arguments)))
+  ;; bigass conditional or iterator or something (have to think about it)
+  ;; that generates all the applists, makes a todo for the current stage,
+  ;; and starts the first stage. Probably best not to inline it.
+  )
+
+;;; Program starts on last line *g*
+(main)
