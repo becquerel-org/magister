@@ -92,10 +92,10 @@ are valid.
                          Defaults to \"none\".
 
 -Set Package-list generation options
-  -t --toolchain[=TYPE]  Rebuild toolchain. Optional argument defines the
-                         type of operation. See below.
-  -s --system            Rebuild set:system. Implies toolchain.
-  -e --everything        Rebuild set:everything. Implies system.
+  -t --toolchain=TYPE    Rebuild toolchain. This is *ALWAYS* on. Use option to
+                         specify the toolchain rebuild. See below.
+  -s --system            Rebuild set:system after the toolchain.
+  -e --everything        Rebuild set:everything after the system. Implies system.
 
 This is not a general-operation wrapper script, it is merely
 intended to help in making one's installation consistent after
@@ -304,7 +304,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 			(pre-dependencies (value #t))
 			(checks (value #t))
 			(resume (single-char #\r) (value #f))
-			(toolchain (single-char #\t) (value optional)
+			(toolchain (single-char #\t) (value #t)
 				   (predicate ,toolchain-option?))
 			(system (single-char #\s) (value #f))
 			(everything (single-char #\e) (value #f))))
@@ -317,7 +317,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	 (pre-dependencies-wanted (option-ref options 'pre-dependencies "discard"))
 	 (checks-wanted (option-ref options 'checks "none"))
 	 (resume-wanted (option-ref options 'resume #f))
-	 (toolchain-wanted (option-ref options 'toolchain #f))
+	 (toolchain-wanted (option-ref options 'toolchain "headers"))
 	 (system-wanted (option-ref options 'system #f))
 	 (everything-wanted (option-ref options 'everything #f)))
     ;; Check for these before anything else.
@@ -336,15 +336,14 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	(set! upgrade upgrade-wanted)
 	(set! pre-dependecies pre-dependecies-wanted)
 	(set! checks checks-wanted)
-	(set! (state 'toolchain) (cond ((eqv? toolchain-wanted #f) "no")
-				       ((eqv? toolchain-wanted #t) "headers")
-				       (else toolchain-wanted)))
-	(set! (state 'system) system-wanted)
-	(set! (state 'everything) everyting-wanted)
+	(set! (state 'everything) everything-wanted)
+	(set! (state 'system) (if everything-wanted
+				  #t
+				  system-wanted))
+	(set! (state 'toolchain) toolchain-wanted)
 	(set! (state 'progress) "Options Parsed"))
     (if verbose-wanted
 	(begin (newline) (print-state) (newline)))))
-
 
 ;;; The world is burning, run!
 (define (main)
