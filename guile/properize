@@ -7,16 +7,8 @@
 ;; PALUDIS_OPTIONS="" paludis -pi1 --dl-deps-default discard --show-reasons none --show-use-descriptions none --checks none $toolchain
 ;; PALUDIS_OPTIONS="" paludis -pi1 --dl-deps-default discard --show-reasons none --show-use-descriptions none --checks none --resume-command-template /var/tmp/properize-resume system|everything
 
-;;; Load the configuration file
-;; FIXME: This is bloody dangerous, make a fucking parser already.
-;; FIXMETOO: Mebbe this should be below ze global var defs, hmmm?
-;(load "/etc/properize.conf")
-(define debug #t)
-
-;;; Turn debugging on up here, so it takes effect immediately
-;;; if set in configuration file.
-(if debug
-    (debug-enable 'backtrace))
+;;; Turn debugging on up here, so it takes effect immediately.
+(debug-enable 'backtrace)
 
 ;;; Global variables and constants
 ;; The version of the application, duh.
@@ -43,7 +35,7 @@
 ;; Optional & Keyword arguments sugar. Mmmmm, sugar.
 (use-modules (ice-9 optargs))
 ;; Provides interface to POSIX system calls.
-(use-modules (ice-9 posix))
+;(use-modules (ice-9 posix))
 ;; Provides POSIX pipes.
 (use-modules (ice-9 popen))
 ;; receive and let-values
@@ -300,7 +292,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
   (regexp-match? (string-match "^((headers|gcc|binutils|glibc){1}(-single)?)$" arg)))
 (define (valid-configuration-file? file)
   (if (and (access? file R_OK)
-	   (= 0 (status:exit-val (string-append "source " file))))
+	   (= 0 (status:exit-val (system (string-append "source " file)))))
       #t
       #f))
 ;; Simple check for the state-dir.
