@@ -208,7 +208,8 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	  (let ((state-var (car state-var-list)))
 	    (if (not (boolean? (state state-var resume-alist)))
 		(set! (state state-var) (state state-var resume-alist)))))
-	(begin (display "\nSorry, the resume file was created by an incompatible version of properize.\n")
+	(begin (display "\nSorry, the resume file was created by an incompatible")
+	       (display " version of properize.\n")
 	       (exit)))))
 ;; Nothing fancy, just dumps the current alist to file, packaged in a thunk
 ;; for code readability.
@@ -253,8 +254,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; implement w. inbuilt Regexp & String-ops?
 ;; Guile bidirectional pipes do not a good text filter make.
 (define (paludis-extract-packages target upgrade pre-dependencies)
-  (let* ((command (string-append "PALUDIS_OPTIONS=\"\" "
-				 "paludis -pi "
+  (let* ((command (string-append "paludis -pi "
 				 (if upgrade
 				     "--dl-upgrade always "
 				     "--dl-upgrade as-needed ")
@@ -375,36 +375,36 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 		  toolchain-wanted
 		  system-wanted
 		  everything-wanted) (parse-commandline default-toolchain)))
-    ;; Check for these before anything else.
-    (if help-wanted
-	(begin (print-header) (print-help) (exit)))
-    (if version-wanted
-	(begin (print-header) (exit)))
-    (if verbose-wanted (set! verbose #t))
-    ;; If we got told to resume, read the state file into the alist.
-    (if resume-wanted
-	(begin (if verbose (display "\nResuming...\n"))
-	       (let-values* ((() ()))
-			    )
-	       (resume-read)
-	       (if verbose-wanted
-		   (begin (newline) (print-state) (newline)))
-	       (executor))
-	;; I should create bidirectional conversion functions for these, so I can get rid
-	;; of these inline (cond)s...
-	(set! pretend pretend-wanted)
-	(set! upgrade upgrade-wanted)
-	(set! pre-dependecies pre-dependecies-wanted)
-	(set! checks checks-wanted)
-	(set! (state 'everything) everything-wanted)
-	(set! (state 'system) (if everything-wanted
-				  #t
-				  system-wanted))
-	(set! (state 'toolchain) toolchain-wanted)
-	(set! (state 'progress) "Options Parsed")
-	(if verbose-wanted
-	    (begin (newline) (print-state) (newline)))
-	(generator))))
+	       ;; Check for these before anything else.
+	       (if help-wanted
+		   (begin (print-header) (print-help) (exit)))
+	       (if version-wanted
+		   (begin (print-header) (exit)))
+	       (if verbose-wanted (set! verbose #t))
+	       ;; Regardless, we clear the PALUDIS_OPTIONS env var.
+	       (unsetenv "PALUDIS_OPTIONS")
+	       ;; If we got told to resume, read the state file into the alist.
+	       (if resume-wanted
+		   (begin (if verbose (display "\nResuming...\n"))
+			  (let-values* ((() ()))
+				       )
+			  (resume-read)
+			  (if verbose-wanted
+			      (begin (newline) (print-state) (newline)))
+			  (executor))
+		   (set! pretend pretend-wanted)
+		   (set! upgrade upgrade-wanted)
+		   (set! pre-dependecies pre-dependecies-wanted)
+		   (set! checks checks-wanted)
+		   (set! (state 'everything) everything-wanted)
+		   (set! (state 'system) (if everything-wanted
+					     #t
+					     system-wanted))
+		   (set! (state 'toolchain) toolchain-wanted)
+		   (set! (state 'progress) "Options Parsed")
+		   (if verbose-wanted
+		       (begin (newline) (print-state) (newline)))
+		   (generator))))
 
 ;;; The world is burning, run!
 ;; Check if everything is allright with the environment.
