@@ -399,10 +399,10 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;;; The world is burning, run!
 ;; Check if everything is allright with the environment.
 (define (check-environment)
-  (if (not (resume-check)) ; check that the state-dir variable points to a valid location.
-      (begin (display "\nThere is a problem with the state directory,\n")
-	     (display "and/or the properize.state file therein.\n")
-	     (display "Please check your configuration.\n")
+  ;; check that the state-dir variable points to a valid location.
+  (if (not (valid-configuration-file? *system-configuration-file*))
+      (begin (display "\nThere is a problem with the configuration file;\n")
+	     (display "Please check your syntax.\n")
 	     (exit)))
   (if (null? (cdr (command-line))) ; if called w. no arguments, print help and exit.
       (begin (print-header) (print-help) (exit))
