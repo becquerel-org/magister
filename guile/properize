@@ -260,8 +260,8 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 (define (paludis-command-generator package)
   (let ((command "PALUDIS_OPTIONS=\"\" paludis "))
     (if pretend
-	(set! command (string-append command "-pi "))
-	(set! command (string-append command "-i ")))
+	(set! command (string-append command "-pi1 "))
+	(set! command (string-append command "-i1 ")))
     (if upgrade
 	(set! command (string-append command "--dl-upgrade always ")))
     (set! command (string-append command package))
