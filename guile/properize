@@ -31,6 +31,7 @@
 (define pretend #t)
 (define upgrade #t)
 (define pre-dependencies "discard")
+(define checks "none")
 
 ;;; Load necessary modules
 ;; We need regular expressions.
@@ -62,7 +63,7 @@ Example: properize -s
        properize [OPTION] --resume
 Resume an interrupted operation.
 
-Option arguments must follow the option immediately if scpecified:
+Option arguments must follow the option immediately if specified:
   -f bar
 In the long form, both
   --foo=bar
@@ -78,40 +79,36 @@ are valid.
 -Action options
   -r --resume            Resume an interrupted operation.
   -p --pretend           Pretend only.
-  -n --no-upgrades       Passes --dl-upgrade as-needed to paludis during set
+  -u --upgrade           Passes --dl-upgrade always to paludis during set
                          package-list generation.
      --pre-dependencies=deptype
                          Passes the supplied value as argument to
                          --dl-installed-deps-pre to paludis *AS_IS*
                          during set package-list generation.
                          Defaults to \"discard\".
+     --checks=runopt     Passes the supplied value as an argument to
+                         --checks to paludis *AS_IS* during build
+                         operations.
+                         Defaults to \"none\".
 
 -Set Package-list generation options
   -t --toolchain[=TYPE]
                          Rebuild toolchain. Optional argument defines the
                          type of operation. See below.
-  -s --system[=all]      Rebuild set:system. Optional argument rebuilds
-                         toolchain as well
-  -e --everything[=all]  Rebuild set:everything. Optional argument rebuilds
-                         set:system as well.
+  -s --system            Rebuild set:system. Implies toolchain.
+  -e --everything        Rebuild set:everything. Implies system.
 
-\"everything\" implies \"system\" implies \"toolchain\";
 This is not a general-operation wrapper script, it is merely
 intended to help in making one's installation consistent after
-a toolchain or flag change.
-During normal operation \"toolchain\" is subtracted from \"system\",
+a toolchain or C/CXX/LDFLAG change.
+During package-list generation, \"toolchain\" is subtracted from \"system\",
 and \"system\" from \"everything\", in order to remove unnecessary
-compilation and minimize execution time. This behaviour can be overridden
-by passing the \"all\" argument:
-
-  properize -s all --everything=all
-
-  properize --system all
+compilation and minimize execution time.
 
 Various \"toolchain\" operations are available, the default can be overridden
 by passing their names as arguments to the toolchain option:
 
-  properize -set gcc-single
+  properize -et gcc-single
 
   properize --system --toolchain=binutils-single
 
@@ -132,9 +129,12 @@ Single builds:
   glibc-single          =\"glibc binutils gcc\"
   binutils|gcc-single   =\"binutils gcc\"
 
-The default value can be overridden in the configuration file.
+After the standard toolchain list is generated, some packages are appended if they exist:
 
-Currently, the builds are lifted straight out of emwrap.sh,
+  libtool
+  libstdc++-v3
+
+Currently, the toolchain builds are lifted straight out of emwrap.sh,
 Copyright (c) 2004-2007 Hiel Van Campen.
 If you have a better idea, I'm open to suggestions.\n\n"))
 ;; Prints the salient points of the current internal state, moderately prettily.
@@ -159,11 +159,11 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; Alists might not be fast if they're huge, but they're fine for this - what will be large will
 ;; be the cdr of some of the cells. Mise store those in vektorz?
 (define state-alist `((version . ,*properize-version*)
-		      (toolchain . 0)
+		      (toolchain . "no")
 		      (toolchain-apps . (""))
-		      (system . 0)
+		      (system . #f)
 		      (system-apps . (""))
-		      (everything . 0)
+		      (everything . #f)
 		      (everything-apps . (""))
 		      (progress . "Initilization")
 		      (todo . (""))))
@@ -267,16 +267,25 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	(set! command (string-append command "--dl-upgrade always ")))
     (set! command (string-append command package))
     command))
-;; Given a set, generates a list of packages in that set.
-;; <set> must be a string.
-;; Returns a list, '() in case the set has no packages - or in case of any other failure along the
+;; Given a target, generates a list of the packages to be installed.
+;; <target> must be a string.
+;; Returns a list, '() in case the target is invalid - or in case of any other failure along the
 ;; way, tbqh.
-;; FIXME: Gotta figure out a way to make it more debuggable. How expensive would it be to implement
-;; w. inbuilt Regexp & String-ops?
+;; FIXME: Gotta figure out a way to make it more debuggable. How expensive would it be to
+;; implement w. inbuilt Regexp & String-ops?
 ;; Guile bidirectional pipes do not a good text filter make.
-(define (paludis-list-generator set)
-  (let ((port (open-input-pipe "paludis -pi --dl-reinstall always system | egrep \"\\[(([RN])|(U [-_.[:alnum:]]+))\\]\" | awk '{print $2}'"))
-	(package-list '("")))
+(define (paludis-list-generator target)
+  (let* ((command (string-append "PALUDIS_OPTIONS=\"\" "
+				 "paludis -pi "
+				 (if upgrade
+				     "--dl-upgrade always "
+				     "--dl-upgrade as-needed ")
+				 "--dl-installed-deps-pre " pre-dependecies " "
+				 target
+				 " | egrep \"\\[(([RN])|(U [-_.[:alnum:]]+))\\]\""
+				 " | awk '{print $2}'"))
+	 (port (open-input-pipe command))
+	 (package-list '("")))
     (do ((package (read port) (read port)))
 	((eof-object? package) (close-pipe port) (if (not (null? (cdr package-list)))
 						     (cdr package-list)
@@ -285,26 +294,29 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 
 ;;; Argument parser
 (define (parse-arguments)
-  (let* ((set-option? (lambda (arg) (string=? "all" arg)))
-	 (toolchain-option? (lambda (arg)
-			      (regexp-match? (string-match "^((headers|gcc|binutils|glibc){1}(-single)?)$" arg))))
+  (let* ((toolchain-option?
+	  (lambda (arg) (regexp-match?
+		    (string-match "^((headers|gcc|binutils|glibc){1}(-single)?)$" arg))))
 	 (option-spec `((help (single-char #\h) (value #f))
 			(version (single-char #\v) (value #f))
 			(pretend (single-char #\p) (value #f))
 			(verbose (single-char #\V) (value #f))
-			(no-upgrades (single-char #\n) (value #f))
-			(pre-dependencies (value optional))
+			(upgrade (single-char #\u) (value #f))
+			(pre-dependencies (value #t))
+			(checks (value #t))
 			(resume (single-char #\r) (value #f))
-			(toolchain (single-char #\t) (value optional) (predicate ,toolchain-option?))
-			(system (single-char #\s) (value optional) (predicate ,set-option?))
-			(everything (single-char #\e) (value optional) (predicate ,set-option?))))
+			(toolchain (single-char #\t) (value optional)
+				   (predicate ,toolchain-option?))
+			(system (single-char #\s) (value #f))
+			(everything (single-char #\e) (value #f))))
 	 (options (getopt-long (command-line) option-spec))
 	 (help-wanted (option-ref options 'help #f))
 	 (version-wanted (option-ref options 'version #f))
-	 (pretend-wanted (option-ref options 'pretend #t))
-	 (verbose-wanted (option-ref options 'verbose #t))
-	 (upgrade-wanted (not (option-ref options 'no-upgrades #f)))
+	 (pretend-wanted (option-ref options 'pretend #f))
+	 (verbose-wanted (option-ref options 'verbose #f))
+	 (upgrade-wanted (option-ref options 'upgrade #f))
 	 (pre-dependencies-wanted (option-ref options 'pre-dependencies "discard"))
+	 (checks-wanted (option-ref options 'checks "none"))
 	 (resume-wanted (option-ref options 'resume #f))
 	 (toolchain-wanted (option-ref options 'toolchain #f))
 	 (system-wanted (option-ref options 'system #f))
@@ -324,22 +336,12 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	(set! pretend pretend-wanted)
 	(set! upgrade upgrade-wanted)
 	(set! pre-dependecies pre-dependecies-wanted)
-	(set! (state 'toolchain) (cond ((eqv? toolchain-wanted #f) 0)
-				       ((eqv? toolchain-wanted #t) 1)
-				       ((string=? toolchain-wanted "headers") 2)
-				       ((string=? toolchain-wanted "headers-single") 3)
-				       ((string=? toolchain-wanted "glibc") 4)
-				       ((string=? toolchain-wanted "glibc-single") 5)
-				       ((or (string=? toolchain-wanted "gcc")
-					    (string=? toolchain-wanted "binutils")) 6)
-				       ((or (string=? toolchain-wanted "gcc-single")
-					    (string=? toolchain-wanted "binutils-single")) 7)))
-	(set! (state 'system) (cond ((eqv? system-wanted #f) 0)
-				    ((eqv? system-wanted #t) 1)
-				    ((string=? system-wanted "all") 2)))
-	(set! (state 'everything) (cond ((eqv? everything-wanted #f) 0)
-					((eqv? everything-wanted #t) 1)
-					((string=? everyting-wanted "all") 2)))
+	(set! checks checks-wanted)
+	(set! (state 'toolchain) (cond ((eqv? toolchain-wanted #f) "no")
+				       ((eqv? toolchain-wanted #t) "headers")
+				       (else toolchain-wanted)))
+	(set! (state 'system) system-wanted)
+	(set! (state 'everything) everyting-wanted)
 	(set! (state 'progress) "Options Parsed"))
     (if verbose-wanted
 	(begin (newline) (print-state) (newline)))))
