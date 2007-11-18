@@ -10,7 +10,7 @@
 ;;; Load the configuration file
 ;; FIXME: This is bloody dangerous, make a fucking parser already.
 ;; FIXMETOO: Mebbe this should be below ze global var defs, hmmm?
-(load "/etc/properize.conf")
+;(load "/etc/properize.conf")
 (define debug #t)
 
 ;;; Turn debugging on up here, so it takes effect immediately
@@ -27,7 +27,7 @@
 (define *system-configuration-file* "/etc/properize.conf")
 ;; Happy happy joy joy... hey, perhaps a . should be prepended if
 ;; (string=? *state-dir* (env home))? Discuss.
-(define *state-file* (string-append *state-dir* "/properize-resume"))
+;(define *state-file* (string-append *state-dir* "/properize-resume"))
 ;; Yay global variables, what is this, java???
 (define verbose #t)
 (define pretend #t)
