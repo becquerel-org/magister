@@ -19,10 +19,6 @@
 (define *system-configuration-file* "/etc/properize.conf")
 ;; Yay global variables, what is this, java???
 (define verbose #t)
-(define pretend #t)
-(define upgrade #t)
-(define pre-dependencies "discard")
-(define checks "none")
 
 ;;; Load necessary modules
 ;; We need regular expressions.
@@ -302,7 +298,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
       #t
       #f))
 
-;;; Configuration file functions
+;;; Configuration file parser.
 ;; Reads a configuration file, checking for the validity of the options therein.
 ;; <file> must be a string, and better be a valid filename-cum-path too.
 ;; Returns 2 values, the resume-directory and the default-toolchain.
@@ -326,8 +322,8 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	       (display " is not a valid toolchain option.\n") (exit)))
     (values resume-directory default-toolchain)))
 
-;;; Argument parser
-(define (parse-arguments)
+;;; Command-line option parser
+(define (parse-commandline default-toolchain)
   (let* ((option-spec `((help (single-char #\h) (value #f))
 			(version (single-char #\v) (value #f))
 			(pretend (single-char #\p) (value #f))
@@ -349,9 +345,36 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	 (pre-dependencies-wanted (option-ref options 'pre-dependencies "discard"))
 	 (checks-wanted (option-ref options 'checks "none"))
 	 (resume-wanted (option-ref options 'resume #f))
-	 (toolchain-wanted (option-ref options 'toolchain "headers"))
+	 (toolchain-wanted (option-ref options 'toolchain default-toolchain))
 	 (system-wanted (option-ref options 'system #f))
 	 (everything-wanted (option-ref options 'everything #f)))
+    (values help-wanted
+	    version-wanted
+	    pretend-wanted
+	    verbose-wanted
+	    upgrade-wanted
+	    pre-dependencies-wanted
+	    checks-wanted
+	    resume-wanted
+	    toolchain-wanted
+	    system-wanted
+	    everything-wanted)))
+
+;;; Argument parser
+(define (parse-options configuration-file)
+  (let-values* (((resume-directory
+		  default-toolchain) (read-configuration-file configuration-file))
+		((help-wanted
+		  version-wanted
+		  pretend-wanted
+		  verbose-wanted
+		  upgrade-wanted
+		  pre-dependencies-wanted
+		  checks-wanted
+		  resume-wanted
+		  toolchain-wanted
+		  system-wanted
+		  everything-wanted) (parse-commandline default-toolchain)))
     ;; Check for these before anything else.
     (if help-wanted
 	(begin (print-header) (print-help) (exit)))
@@ -394,7 +417,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
   (if (null? (cdr (command-line))) ; if called w. no arguments, print help and exit.
       (begin (print-header) (print-help) (exit))
       (begin (if verbose (display "\nParsing command-line...\n"))
-	     (parse-options))))
+	     (parse-options *system-configuration-file*))))
 
 ;;; Program starts on last line *g*
 (check-environment)
