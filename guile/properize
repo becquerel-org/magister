@@ -23,6 +23,8 @@
 (define *properize-version* '(0 0 1))
 ;; The earlist compatible version, as far as internal structure of the state alist goes
 (define *compatible-version* '(0 0 1))
+;; The location of the configuration file.
+(define *system-configuration-file* "/etc/properize.conf")
 ;; Happy happy joy joy... hey, perhaps a . should be prepended if
 ;; (string=? *state-dir* (env home))? Discuss.
 (define *state-file* (string-append *state-dir* "/properize-resume"))
@@ -199,17 +201,6 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;(equal? (caar (assoc-ref state-alist 'todo)) 'paludis) => #t
 
 ;;; Resume-State reading and writing
-;; Simple check for the state-dir.
-;; Returns boolean; true if the dir is read/writeable and we can create files, and
-;; either the file does not exist, or it exists and we have read/write
-;; access on it, otherwise returns false.
-;; FIXME: must do better, eat more cake.
-(define (resume-check)
-  (if (and (access? *state-dir* (logior R_OK W_OK X_OK))
-	   (or (not (access? *state-file* F_OK))
-	       (access? *state-file (logior W_OK R_OK))))
-      #t
-      #f))
 ;; Reads the alist from the state-file, and loads its values into the
 ;; current state alist.
 ;; If the version that created the file is below the last compatible version,
@@ -304,13 +295,53 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; Generates a list of actions and passes it to executor.
 (define (generate-action-list toolchain system everything upgrade pre-dependencies checks) "stub")
 
+;;; Validity predicates
+(define (valid-toolchain-option? arg)
+  (regexp-match? (string-match "^((headers|gcc|binutils|glibc){1}(-single)?)$" arg)))
+(define (valid-configuration-file? file)
+  (if (and (access? file R_OK)
+	   (= 0 (status:exit-val (string-append "source " file))))
+      #t
+      #f))
+;; Simple check for the state-dir.
+;; Returns boolean; true if the dir is read/writeable and we can create files, and
+;; either the file does not exist, or it exists and we have read/write
+;; access on it, otherwise returns false.
+;; FIXME: must do better, eat more cake.
+(define (valid-resume-location? state-dir)
+  (if (and (access? state-dir (logior R_OK W_OK X_OK))
+	   (or (not (access? state-file F_OK))
+	       (access? state-file (logior W_OK R_OK))))
+      #t
+      #f))
+
+;;; Configuration file functions
+;; Reads a configuration file, checking for the validity of the options therein.
+;; <file> must be a string, and better be a valid filename-cum-path too.
+;; Returns 2 values, the resume-directory and the default-toolchain.
+;; You'll need to use (receive) or similar.
+(define (read-configuration-file file)
+  (let* ((source-string (string-append "source " file " 2>/dev/null; echo $"))
+	 (retrieve-variable (lambda (var)
+			      (let* ((port (open-input-pipe (string-append source-string
+									   var)))
+				     (shell-var (read port)))
+				(close-pipe port)
+				shell-var)))
+	 (resume-directory (retrieve-variable "RESUME_FILE"))
+	 (default-toolchain (retrieve-variable "DEFAULT_TOOLCHAIN")))
+    (if (not (valid-resume-location? resume-directory))
+	(begin (display "\nThere's a problem with your resume-location.\n")
+	       (display "Check your configuration file and/or permissions.\n")
+	       (exit)))
+    (if (not (valid-toolchain-option? default-toolchain))
+	(begin (display "\n\"") (display default-toolchain) (display"\"")
+	       (display " is not a valid toolchain option.\n") (exit)))
+    (values resume-directory default-toolchain)))
+
 ;;; Argument parser
 (define (parse-arguments)
-
-  (let* ((toolchain-option?
-	  (lambda (arg) (regexp-match?
-		    (string-match "^((headers|gcc|binutils|glibc){1}(-single)?)$" arg))))
-	 (option-spec `((help (single-char #\h) (value #f))
+  (let* ((option-spec `((help (single-char #\h) (value #f))
 			(version (single-char #\v) (value #f))
 			(pretend (single-char #\p) (value #f))
 			(verbose (single-char #\V) (value #f))
@@ -319,7 +350,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 			(checks (value #t))
 			(resume (single-char #\r) (value #f))
 			(toolchain (single-char #\t) (value #t)
-				   (predicate ,toolchain-option?))
+				   (predicate ,valid-toolchain-option?))
 			(system (single-char #\s) (value #f))
 			(everything (single-char #\e) (value #f))))
 	 (options (getopt-long (command-line) option-spec))
@@ -366,6 +397,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	(generator))))
 
 ;;; The world is burning, run!
+;; Check if everything is allright with the environment.
 (define (check-environment)
   (if (not (resume-check)) ; check that the state-dir variable points to a valid location.
       (begin (display "\nThere is a problem with the state directory,\n")
@@ -375,10 +407,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
   (if (null? (cdr (command-line))) ; if called w. no arguments, print help and exit.
       (begin (print-header) (print-help) (exit))
       (begin (if verbose (display "\nParsing command-line...\n"))
-	     (parse-arguments))))
-  ;; bigass conditional or iterator or something (have to think about it)
-  ;; that generates all the applists, makes a todo for the current stage,
-  ;; and starts the first stage. Probably best not to inline it.
+	     (parse-options))))
 
 ;;; Program starts on last line *g*
 (check-environment)
