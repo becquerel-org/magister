@@ -17,9 +17,6 @@
 (define *compatible-version* '(0 0 1))
 ;; The location of the configuration file.
 (define *system-configuration-file* "/etc/properize.conf")
-;; Happy happy joy joy... hey, perhaps a . should be prepended if
-;; (string=? *state-dir* (env home))? Discuss.
-;(define *state-file* (string-append *state-dir* "/properize-resume"))
 ;; Yay global variables, what is this, java???
 (define verbose #t)
 (define pretend #t)
@@ -34,8 +31,6 @@
 (use-modules (ice-9 getopt-long))
 ;; Optional & Keyword arguments sugar. Mmmmm, sugar.
 (use-modules (ice-9 optargs))
-;; Provides interface to POSIX system calls.
-;(use-modules (ice-9 posix))
 ;; Provides POSIX pipes.
 (use-modules (ice-9 popen))
 ;; receive and let-values
