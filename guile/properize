@@ -92,8 +92,7 @@ are valid.
                          Defaults to \"none\".
 
 -Set Package-list generation options
-  -t --toolchain[=TYPE]
-                         Rebuild toolchain. Optional argument defines the
+  -t --toolchain[=TYPE]  Rebuild toolchain. Optional argument defines the
                          type of operation. See below.
   -s --system            Rebuild set:system. Implies toolchain.
   -e --everything        Rebuild set:everything. Implies system.
