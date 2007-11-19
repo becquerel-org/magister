@@ -237,15 +237,16 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; package.
 ;; <package> must be a string.
 ;; Returns a string.
-(define (paludis-generate-command package)
-  (let ((command "paludis "))
-    (if pretend
-	(set! command (string-append command "-pi1 "))
-	(set! command (string-append command "-i1 ")))
-    (if upgrade
-	(set! command (string-append command "--dl-upgrade always ")))
-    (set! command (string-append command package))
-    command))
+(define (paludis-generate-command package pretend upgrade checks)
+  (string-append "paludis "
+		 (if pretend
+		     "-pi1 "
+		     "-i1 ")
+		 "--checks " checks " "
+		 (if upgrade
+		     "--dl-upgrade always "
+		     "--dl-upgrade as-needed ")
+		 package))
 ;; Given a target, generates a list of the packages to be installed.
 ;; <target> must be a string. It better be a valid set or pakage, yo =P
 ;; Returns a list, '() in case the target is invalid - or in case of any other failure along the
