@@ -276,12 +276,19 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 (define (execute-action-list action-list) "stub")
 
 ;;; Generator -  does what it says on the box ;)
-;; Generates a list of actions and passes it to executor.
+;; Generates a list of actions and passes it to execute-action-list.
 (define (generate-action-list toolchain system everything upgrade pre-dependencies checks) "stub")
 
 ;;; Validity predicates
+;; Checks wether the given option is a valid toolchain-action spec.
+;; <arg> must be a string.
+;; Returns boolean.
 (define (valid-toolchain-option? arg)
   (regexp-match? (string-match "^((headers|gcc|binutils|glibc){1}(-single)?)$" arg)))
+;; Checks a configuration file for problems.
+;; <file> must be a string.
+;; Returns boolean.
+;; FIXME: Split one for existence, the other for syntax.
 (define (valid-configuration-file? file)
   (if (and (access? file R_OK)
 	   (= 0 (status:exit-val (system (string-append "source " file)))))
