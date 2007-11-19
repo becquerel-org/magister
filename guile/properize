@@ -233,7 +233,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;(match:substring (string-match "^(sys-devel/gcc-)([.0-9r]+(-r[0-9])?)(.*)$" package) 2)
 
 ;;; Paludis handlers
-;; Generates a command  that can be passed as an argument to system-execute-action to build a
+;; Generates a command that can be passed as an argument to system-execute-action to build a
 ;; package.
 ;; <package> must be a string.
 ;; Returns a string.
@@ -261,7 +261,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 				     "--dl-upgrade as-needed ")
 				 "--dl-installed-deps-pre " pre-dependecies " "
 				 target
-				 " | egrep \"\\[(([RN])|(U [-_.[:alnum:]]+))\\]\""
+				 " | egrep '^\\* .*/.* '"
 				 " | awk '{print $2}'"))
 	 (port (open-input-pipe command))
 	 (package-list '("")))
