@@ -203,7 +203,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 
 ;;; Generator -  does what it says on the box ;)
 ;; Generates a list of actions and passes it to execute-action-list.
-(define (generate-action-list toolchain system everything upgrade pre-dependencies checks) "stub")
+(define (generate-action-list toolchain system everything pretend upgrade pre-dependencies checks) "stub")
 
 ;;; Validity predicates
 ;; Checks wether the given option is a valid toolchain-action spec.
@@ -256,14 +256,14 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 				shell-var)))
 	 (resume-directory (retrieve-variable "RESUME_FILE"))
 	 (default-toolchain (retrieve-variable "DEFAULT_TOOLCHAIN")))
-    (if (not (valid-resume-location? resume-directory))
+    (if (not (valid-resume-directory? resume-directory))
 	(begin (display "\nThere's a problem with your resume-location.\n")
 	       (display "Check your configuration file and/or permissions.\n")
 	       (exit)))
     (if (not (valid-toolchain-option? default-toolchain))
 	(begin (display "\n\"") (display default-toolchain) (display"\"")
 	       (display " is not a valid toolchain option.\n") (exit)))
-    (values resume-directory default-toolchain)))
+    (values resume-file default-toolchain)))
 
 ;;; Command-line option parser
 (define (parse-commandline default-toolchain)
@@ -305,7 +305,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 
 ;;; Argument parser
 (define (parse-options configuration-file)
-  (let-values* (((resume-directory
+  (let-values* (((resume-file
 		  default-toolchain) (read-configuration-file configuration-file))
 		((help-wanted
 		  version-wanted
@@ -326,28 +326,24 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	       (if verbose-wanted (set! verbose #t))
 	       ;; Regardless, we clear the PALUDIS_OPTIONS env var.
 	       (unsetenv "PALUDIS_OPTIONS")
-	       ;; If we got told to resume, read the state file into the alist.
 	       (if resume-wanted
-		   (begin (if verbose (display "\nResuming...\n"))
-			  (let-values* ((() ()))
-				       )
-			  (resume-read)
-			  (if verbose-wanted
-			      (begin (newline) (print-state) (newline)))
-			  (executor))
-		   (set! pretend pretend-wanted)
-		   (set! upgrade upgrade-wanted)
-		   (set! pre-dependecies pre-dependecies-wanted)
-		   (set! checks checks-wanted)
-		   (set! (state 'everything) everything-wanted)
-		   (set! (state 'system) (if everything-wanted
+		   ;; If we got told to resume, read the state file and pass the action-list
+		   ;; to (execute-action-list).
+		   (let ((action-list (resume-read resume-file)))
+		     (if verbose (display "\nResuming...\n"))
+		     (execute-action-list action-list))
+		   ;; Else, proceed with potion mangling and action-list generation.
+		   (let ((system-wanted (if everything-wanted
 					     #t
-					     system-wanted))
-		   (set! (state 'toolchain) toolchain-wanted)
-		   (set! (state 'progress) "Options Parsed")
-		   (if verbose-wanted
-		       (begin (newline) (print-state) (newline)))
-		   (generator))))
+					     system-wanted)))
+		     (if verbose (display "\nInitializing...\n"))
+		     (generate-action-list toolchain-wanted
+					   system-wanted
+					   everything-wanted
+					   pretend-wanted
+					   upgrade-wanted
+					   pre-dependencies-wanted
+					   checks-wanted)))))
 
 ;;; The world is burning, run!
 (define (check-environment)
@@ -358,8 +354,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	     (exit)))
   (if (null? (cdr (command-line))) ; if called w. no arguments, print help and exit.
       (begin (print-header) (print-help) (exit))
-      (begin (if verbose (display "\nParsing command-line...\n"))
-	     (parse-options *system-configuration-file*))))
+      (parse-options *system-configuration-file*)))
 
 ;;; Program starts on last line *g*
 (check-environment)
