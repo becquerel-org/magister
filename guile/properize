@@ -126,6 +126,16 @@ Copyright (c) 2004-2007 Hiel Van Campen.
 If you have a better idea, I'm open to suggestions.\n\n"))
 
 ;;; Convenience functions
+;; Runs a pipe with argument <command>, and returns the result - one line only.
+(define (read-pipe-line command)
+  (let* ((port (open-input-pipe command))
+	 (pipe-line (read port)))
+    (close-pipe port)
+    pipe-line))
+
+(define (read-$var-from-file var file)
+  (let ((source-string (string-append "source " file " 2>/dev/null; echo $" var)))
+    (read-pipe-line source-string)))
 
 ;;; Resume-file reading and writing
 ;; Reads the action-list from the resume-file, and returns it.
@@ -247,15 +257,8 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; Returns 2 values, the resume-directory and the default-toolchain.
 ;; You'll need to use (receive) or similar.
 (define (read-configuration-file file)
-  (let* ((source-string (string-append "source " file " 2>/dev/null; echo $"))
-	 (retrieve-variable (lambda (var)
-			      (let* ((port (open-input-pipe (string-append source-string
-									   var)))
-				     (shell-var (read port)))
-				(close-pipe port)
-				shell-var)))
-	 (resume-file (retrieve-variable "RESUME_FILE"))
-	 (default-toolchain (retrieve-variable "DEFAULT_TOOLCHAIN"))
+  (let* ((resume-file (read-$var-from-file "RESUME_FILE" file)))
+	 (default-toolchain (read-$var-from-file "DEFAULT_TOOLCHAIN" file)))
 	 (default-toolchain-ok (valid-toolchain-option? default-toolchain))
 	 (resume-directory
 	  (match:substring (string-match "^(/.*)(/)(.*)$" resume-file) 1))
