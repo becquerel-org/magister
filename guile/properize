@@ -12,9 +12,7 @@
 
 ;;; Global variables and constants
 ;; The version of the application, duh.
-(define *properize-version* '(0 0 1))
-;; The earlist compatible version, as far as internal structure of the state alist goes
-(define *compatible-version* '(0 0 1))
+(define *properize-version* "0.0.2")
 ;; The location of the configuration file.
 (define *system-configuration-file* "/etc/properize.conf")
 ;; Yay global variables, what is this, java???
@@ -37,11 +35,13 @@
 ;; Prints version and basic copyright information.
 (define (print-header)
   (begin (display "Properize v")
-	 (display (version->string *properize-version*))
+	 (display *properize-version*)
 	 (display " (") (display (car (command-line))) (display ")\n")
-	 (display "Copyright (c) 2007 Leonardo Valeri Manera <lvalerimanera>@{NOSPAM}google.com\n")
+	 (display "Copyright (c) 2007 Leonardo Valeri Manera ")
+	 (display "<lvalerimanera>@{NOSPAM}google.com\n")
 	 (display "This program is licensed under the terms of the GPL version 2.\n")
 	 (display "Based on the portage script emwrap.sh, (c) 2004-2007 Hiel Van Campen.\n\n")))
+
 ;; Prints the good old --help dialogue.
 (define (print-help)
   (display"\
@@ -124,98 +124,23 @@ After the standard toolchain list is generated, some packages are appended if th
 Currently, the toolchain builds are lifted straight out of emwrap.sh,
 Copyright (c) 2004-2007 Hiel Van Campen.
 If you have a better idea, I'm open to suggestions.\n\n"))
-;; Prints the salient points of the current internal state, moderately prettily.
-(define (print-state)
-  (begin (display "State:")
-	 (display "\n  Toolchain: ") (display (state 'toolchain))
-	 (display "\n  System: ") (display (state 'system))
-	 (display "\n  Everything: ") (display (state 'everything))
-	 (display "\n  Progress: ") (display (state 'progress)) (newline)))
 
 ;;; Convenience functions
-;; Takes a tripartite version, makes it printable.
-;; <version> must be a list of 3 numbers.
-;; Returns a string.
-(define (version->string version) (string-append (number->string (car version)) "."
-						 (number->string (cadr version)) "."
-						 (number->string (caddr version))))
 
-;;; Define the "state" alist, and the shortcut functions to read and write to its values
-;; Hashes sound nice, except opaque hashes can't be written to file, and concrete hashes are
-;; horribly buggy - empty cells all over the place.
-;; Alists might not be fast if they're huge, but they're fine for this - what will be large will
-;; be the cdr of some of the cells. Mise store those in vektorz?
-(define state-alist `((version . ,*properize-version*)
-		      (toolchain . "no")
-		      (toolchain-apps . (""))
-		      (system . #f)
-		      (system-apps . (""))
-		      (everything . #f)
-		      (everything-apps . (""))
-		      (progress . "Initilization")
-		      (todo . (""))))
-;; Getter/Setter for state-type alists
-;; Getter:
-;; <key> must be a symbol, a la 'bob.
-;; <obj> is optional, must be a symbol pointing to a state alist.
-;; Returns the value of the cell with the given key, or #f if it does not exist - which is only
-;; useful for reading resume states with possibly missing cells.
-;; Usage: (state <key> [<val>])
-;; Setter:
-;; <key> must be a symbol, a la 'bob.
-;; <val> is the value that will be dumped in the cdr of the cell, can be anything really.
-;; Usage: (set! (state <key>) <val>)
-(define state (make-procedure-with-setter
-	       ; Read from resume-file state-alists with this.
-	       ; Returns #f if the key is not present, for soft-falure on
-	       ; outdated resume-files that have usable data in other keys.
-	       (lambda* (key #:optional (obj state-alist))
-		   (let ((val (assoc key obj)))
-		     (if (boolean? val)
-			 #f
-			 (cdr val))))
-	       ; No changing values in the resume state, that's read-only =p
-	       ; All changes happen in the current state, which gets written
-	       ; to file before a package operation.
-	       (lambda* (key val)
-		   (set! obj (assoc-set! state-alist key val)))))
+;;; Resume-file reading and writing
+;; Reads the action-list from the resume-file, and returns it.
+;; <resume-file> must be a string pointing to a file, or a readable file port.
+;; Returns a list.
+(define (resume-read resume-file)
+  (let ((action-list (with-input-from-file resume-file (lambda () (read)))))
+    action-list))
 
-;(set! state-alist (assoc-set! state-alist 'todo '((paludis . "gcc") (gcc-config . "4.1.2") (paludis . "glibc"))))
-;(equal? (caar (assoc-ref state-alist 'todo)) 'paludis) => #t
-
-;;; Resume-State reading and writing
-;; Reads the alist from the state-file, and loads its values into the
-;; current state alist.
-;; If the version that created the file is below the last compatible version,
-;; error out and die.
+;; Nothing fancy, just dumps the action-list into a file.
+;; <resume-file> must be a string pointing to a file, or a readable file port.
+;; <action-list> better be the list you wanna write to the resume-file
 ;; Returns undefined.
-;; FIXME: Needs predicates for the type of values in cells, mmmmaybe?
-(define (resume-read)
-  (let ((resume-alist (with-input-from-file *state-file* (lambda () (read)))))
-    (if (and (>= (car (state 'version resume-alist)) (car *compatible-version*))
-	     (>= (cadr (state 'version resume-alist)) (cadr *compatible-version*))
-	     (>= (caddr (state 'version resume-alist)) (caddr *compatible-version*)))
-	(do ((state-var-list '('version
-			       'toolchain
-			       'toolchain-apps
-			       'system
-			       'system-apps
-			       'everything
-			       'everything-apps
-			       'progress
-			       'todo) (cdr state-var-list)))
-	    ((null? state-var-list))
-	  (let ((state-var (car state-var-list)))
-	    (if (not (boolean? (state state-var resume-alist)))
-		(set! (state state-var) (state state-var resume-alist)))))
-	(begin (display "\nSorry, the resume file was created by an incompatible")
-	       (display " version of properize.\n")
-	       (exit)))))
-;; Nothing fancy, just dumps the current alist to file, packaged in a thunk
-;; for code readability.
-;; Returns undefined.
-(define (resume-write)
-      (with-output-to-file *state-file* (lambda () (write state-alist))))
+(define (resume-write resume-file action-list)
+  (with-output-to-file resume-file (lambda () (write action-list))))
 
 ;;; General command handlers
 ;; Encapsulate :eval-exit so we can simply run paludis-execute-action as a condition.
@@ -247,6 +172,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 		     "--dl-upgrade always "
 		     "--dl-upgrade as-needed ")
 		 package))
+
 ;; Given a target, generates a list of the packages to be installed.
 ;; <target> must be a string. It better be a valid set or pakage, yo =P
 ;; Returns a list, '() in case the target is invalid - or in case of any other failure along the
@@ -285,6 +211,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; Returns boolean.
 (define (valid-toolchain-option? arg)
   (regexp-match? (string-match "^((headers|gcc|binutils|glibc){1}(-single)?)$" arg)))
+
 ;; Checks a configuration file for problems.
 ;; <file> must be a string.
 ;; Returns boolean.
@@ -294,15 +221,23 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	   (= 0 (status:exit-val (system (string-append "source " file)))))
       #t
       #f))
+
 ;; Simple check for the state-dir.
-;; Returns boolean; true if the dir is read/writeable and we can create files, and
-;; either the file does not exist, or it exists and we have read/write
-;; access on it, otherwise returns false.
-;; FIXME: must do better, eat more cake.
-(define (valid-resume-location? state-dir)
-  (if (and (access? state-dir (logior R_OK W_OK X_OK))
-	   (or (not (access? state-file F_OK))
-	       (access? state-file (logior W_OK R_OK))))
+;; Returns boolean; true if the dir is +rwx to us, otherwise returns false.
+;; FIXME: does not work with SUID/SGID, implement an exception-catching try-fail
+;; tester.
+(define (valid-resume-directory? dir)
+  (if (access? dir (logior R_OK W_OK X_OK))
+      #t
+      #f))
+
+;; Simple check for the state-file.
+;; Returns boolean; true if the file either does not exist, or does and is +rw to us,
+;; otherwise returns false.
+;; FIXME: seee (valid-resume-direcotry?)
+(define (valid-resume-file? file)
+  (if (or (not (access? state-file F_OK))
+	  (access? state-file (logior W_OK R_OK)))
       #t
       #f))
 
@@ -415,7 +350,6 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 		   (generator))))
 
 ;;; The world is burning, run!
-;; Check if everything is allright with the environment.
 (define (check-environment)
   ;; check that the state-dir variable points to a valid location.
   (if (not (valid-configuration-file? *system-configuration-file*))
