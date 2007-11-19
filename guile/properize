@@ -254,12 +254,14 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; FIXME: Gotta figure out a way to make it more debuggable. How expensive would it be to
 ;; implement w. inbuilt Regexp & String-ops?
 ;; Guile bidirectional pipes do not a good text filter make.
-(define (paludis-extract-packages target upgrade pre-dependencies)
+(define (paludis-extract-packages target upgrade pre-dependencies toolchain)
   (let* ((command (string-append "paludis -pi "
 				 (if upgrade
 				     "--dl-upgrade always "
 				     "--dl-upgrade as-needed ")
-				 "--dl-installed-deps-pre " pre-dependecies " "
+				 (if toolchain
+				     "--dl-deps-default discard "
+				     "--dl-installed-deps-pre " pre-dependecies " ")
 				 target
 				 " | egrep '^\\* .*/.* '"
 				 " | awk '{print $2}'"))
