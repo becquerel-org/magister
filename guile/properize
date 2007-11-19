@@ -125,7 +125,7 @@ Currently, the toolchain builds are lifted straight out of emwrap.sh,
 Copyright (c) 2004-2007 Hiel Van Campen.
 If you have a better idea, I'm open to suggestions.\n\n"))
 
-;;; Convenience functions
+;;; Pipe-reading
 ;; Runs a pipe an input pipe and returns the result - one line only.
 ;; <command> must be a string and a valid sh pipe.
 ;; Returns whatever was in the 1st line of pipe's output, raw;
@@ -223,7 +223,8 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 
 ;;; Generator -  does what it says on the box ;)
 ;; Generates a list of actions and passes it to execute-action-list.
-(define (generate-action-list toolchain system everything pretend upgrade pre-dependencies checks) "stub")
+(define (generate-action-list toolchain system everything pretend
+			      upgrade pre-dependencies checks chost) "stub")
 
 ;;; Validity predicates
 ;; Checks wether the given option is a valid toolchain-action spec.
@@ -264,16 +265,19 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;;; Configuration file parser.
 ;; Reads a configuration file, checking for the validity of the options therein.
 ;; <file> must be a string, and better be a valid filename-cum-path too.
-;; Returns 2 values, the resume-directory and the default-toolchain.
+;; Returns 3 values, the resume-directory, the default-toolchain, and the CHOST.
 ;; You'll need to use (receive) or similar.
 (define (read-configuration-file file)
-  (let* ((resume-file (read-$var-from-file "RESUME_FILE" file)))
-	 (default-toolchain (read-$var-from-file "DEFAULT_TOOLCHAIN" file)))
+  (let* ((resume-file (read-$var-from-file "RESUME_FILE" file))
+	 (default-toolchain (read-$var-from-file "DEFAULT_TOOLCHAIN" file))
 	 (default-toolchain-ok (valid-toolchain-option? default-toolchain))
 	 (resume-directory
 	  (match:substring (string-match "^(/.*)(/)(.*)$" resume-file) 1))
 	 (resume-directory-ok (valid-resume-directory? resume-directory))
-	 (resume-file-ok (valid-resume-file? resume-file)))
+	 (resume-file-ok (valid-resume-file? resume-file))
+	 (paludis-bashrc (read-$var-from-file "PALUDIS_BASHRC" file))
+	 (chost (read-$var-from-file "CHOST" paludis-bashrc))
+	 (chost-ok (not (eof-object? chost))))
     (cond ((and (not resume-directory-ok)
 		(not resume-file-ok))
 	   (begin (display "\nThere's a problem with the resume-file you specified:\n")
@@ -289,7 +293,10 @@ If you have a better idea, I'm open to suggestions.\n\n"))
     (if (not default-toolchain-ok)
 	(begin (display "\n\"") (display default-toolchain) (display"\"")
 	       (display " is not a valid toolchain option.\n") (exit)))
-    (values resume-file default-toolchain)))
+    (if (not chost-ok)
+	(begin (display "\nPaludis' bashrc does not contain a CHOST variable.\n")
+	       (display "Please set one and try again, kthnx.\n") (exit)))
+    (values resume-file default-toolchain chost)))
 
 ;;; Command-line option parser
 (define (parse-commandline default-toolchain)
@@ -332,7 +339,8 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;;; Argument parser
 (define (parse-options configuration-file)
   (let-values* (((resume-file
-		  default-toolchain) (read-configuration-file configuration-file))
+		  default-toolchain
+		  chost) (read-configuration-file configuration-file))
 		((help-wanted
 		  version-wanted
 		  pretend-wanted
@@ -369,7 +377,8 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 					   pretend-wanted
 					   upgrade-wanted
 					   pre-dependencies-wanted
-					   checks-wanted)))))
+					   checks-wanted
+					   chost)))))
 
 ;;; The world is burning, run!
 (define (check-environment)
