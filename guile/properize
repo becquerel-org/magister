@@ -268,9 +268,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	 (port (open-input-pipe command))
 	 (package-list '("")))
     (do ((package (read port) (read port)))
-	((eof-object? package) (close-pipe port) (if (not (null? (cdr package-list)))
-						     (cdr package-list)
-						     '()))
+	((eof-object? package) (close-pipe port) (cdr package-list))
       (append! package-list `(,(symbol->string package))))))
 
 ;;; Action-list execution
