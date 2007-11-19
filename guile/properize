@@ -234,7 +234,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; Simple check for the state-file.
 ;; Returns boolean; true if the file either does not exist, or does and is +rw to us,
 ;; otherwise returns false.
-;; FIXME: seee (valid-resume-direcotry?)
+;; FIXME: seee (valid-resume-directory?)
 (define (valid-resume-file? file)
   (if (or (not (access? state-file F_OK))
 	  (access? state-file (logior W_OK R_OK)))
