@@ -254,7 +254,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; FIXME: Gotta figure out a way to make it more debuggable. How expensive would it be to
 ;; implement w. inbuilt Regexp & String-ops?
 ;; Guile bidirectional pipes do not a good text filter make.
-(define (paludis-extract-packages target upgrade pre-dependencies toolchain)
+(define* (paludis-extract-packages target upgrade pre-dependencies #:optional (toolchain . #f))
   (let* ((command (string-append "paludis -pi "
 				 (if upgrade
 				     "--dl-upgrade always "
