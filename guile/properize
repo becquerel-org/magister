@@ -221,7 +221,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; Iterates over the action list, saving it to disk before running it.
 (define (execute-action-list action-list) "stub")
 
-;;; Generator -  does what it says on the box ;)
+;;; Action-list generation
 ;; Generates a list of actions and passes it to execute-action-list.
 (define (generate-action-list toolchain system everything pretend
 			      upgrade pre-dependencies checks chost) "stub")
