@@ -30,6 +30,8 @@
 ;; receive and let-values
 (use-modules (ice-9 receive))
 (use-modules (srfi srfi-11))
+;; SRFI-1, extended list ops.
+(use-modules (srfi srfi-11))
 
 ;;; Display functions
 ;; Prints version and basic copyright information.
@@ -216,7 +218,16 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	(append! toolchain-packages
 		 (paludis-extract-packages (symbol->string (car toolchain-list))
 					   upgrade "discard" #t)))))
-  (let ((toolchain-list (generate-toolchain-list upgrade)))
+  (let* ((toolchain-list (generate-toolchain-list upgrade))
+	 (system-list (lset-difference
+		       string=?
+		       (paludis-extract-packages "system" upgrade pre-dependencies)
+		       toolchain-list))
+	 (everything-list (lset-difference
+			   string=?
+			   (paludis-extract-packages "everything" upgrade pre-dependencies)
+			   system-list
+			   toolchain-list)))
     ))
 
 ;;; File validity predicates
