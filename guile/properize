@@ -200,20 +200,26 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; Generates a list of actions and passes it to execute-action-list.
 (define (generate-action-list system everything pretend
 			      upgrade pre-dependencies checks)
-  (define (generate-toolchain upgrade pre-dependencies)
-    (let* ((toolchain-list '('glibc 'binutils 'gcc 'glibc 'binutils 'gcc))
-	   (libtool-needed
-	    (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-devel/ | grep libtool"))
-		#f #t))
-	   (libstdc++-needed
-	    (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-libs/ | grep libstdc\\+\\+-v3"))
-		#f #t)))
+  (define (generate-toolchain-list upgrade)
+    (let ((toolchain-list '('glibc 'binutils 'gcc 'glibc 'binutils 'gcc))
+	  (libtool-needed
+	   (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-devel/ | grep libtool"))
+	       #f #t))
+	  (libstdc++-needed
+	   (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-libs/ | grep libstdc\\+\\+-v3"))
+	       #f #t))
+	  (toolchain-packages '("")))
       (if libtool-needed (append! toolchain-list '('libtool)))
-      (if libstdc++-needed (append! toolchain-list '('libstdc++-v3)))))
-  (let ((toolchain-list (generate-toolchain toolchain upgrade pre-dependcies)))
+      (if libstdc++-needed (append! toolchain-list '('libstdc++-v3)))
+      (do ((toolchain-list toolchain-list (cdr toolchain-packages)))
+	  ((null? toolchain-list) (cdr toolchain-packages))
+	(append! toolchain-packages
+		 (paludis-extract-packages (symbol->string (car toolchain-list))
+					   upgrade "discard" #t)))))
+  (let ((toolchain-list (generate-toolchain-list upgrade)))
     ))
 
-;;; Validity predicates
+;;; File validity predicates
 ;; Checks a configuration file for problems.
 ;; <file> must be a string.
 ;; Returns boolean.
