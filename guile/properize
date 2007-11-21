@@ -187,10 +187,6 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 		   (string-match "^(sys-devel/gcc-)([.0-9r]+)(.*)$" package) 2))))
     (string-append "gcc-config " chost "-" version)))
 
-;;gcc-config i686-pc-linux-gnu-4.1.2
-;;$(source /etc/paludis/bashrc 2>/dev/null; echo $CHOST)
-;;(match:substring (string-match "^(sys-devel/gcc-)([.0-9r]+(-r[0-9])?)(.*)$" package) 2)
-
 ;;; Paludis handlers
 ;; Generates a command that can be passed as an argument to system-execute-action to build a
 ;; package.
@@ -313,6 +309,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
     (values resume-file default-toolchain chost)))
 
 ;;; Command-line option parser
+;; Parses commandline using (ice-9 getopt-long).
 (define (parse-commandline default-toolchain)
   (let* ((option-spec `((help (single-char #\h) (value #f))
 			(version (single-char #\v) (value #f))
@@ -351,6 +348,9 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	    everything-wanted)))
 
 ;;; Argument parser
+;; Controls parsing and validation of file and commandline options, sets global options and
+;; initial environment, and initiates action-list generation or resuming and action-list
+;; execution.
 (define (parse-options configuration-file)
   (let-values* (((resume-file
 		  default-toolchain
@@ -395,6 +395,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 					   chost)))))
 
 ;;; The world is burning, run!
+;; Validates non-option environment, starts option parsing.
 (define (check-environment)
   ;; check that the state-dir variable points to a valid location.
   (if (not (valid-configuration-file? *system-configuration-file*))
