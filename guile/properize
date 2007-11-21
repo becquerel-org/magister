@@ -39,25 +39,22 @@
 	 (display " (") (display (car (command-line))) (display ")\n")
 	 (display "Copyright (c) 2007 Leonardo Valeri Manera ")
 	 (display "<lvalerimanera>@{NOSPAM}google.com\n")
-	 (display "This program is licensed under the terms of the GPL version 2.\n")
-	 (display "Based on the portage script emwrap.sh, (c) 2004-2007 Hiel Van Campen.\n\n")))
+	 (display "This program is licensed under the terms of the GPL version 2.\n\n")))
 
 ;; Prints the good old --help dialogue.
 (define (print-help)
   (display"\
-Usage: properize [OPTION] [SETS]
-Make installation consistent with toolchain.
-Example: properize -s
-       properize [OPTION] --resume
-Resume an interrupted operation.
+Usage:
+Make installation consistent with toolchain:
+     properize [OPTION] [SETS]
 
-Option arguments must follow the option immediately if specified:
-  -f bar
-In the long form, both
+Resume an interrupted operation:
+     properize --resume
+       
+
+Option arguments must follow the option immediately, both these forms are valid:
   --foo=bar
-and
   --foo bar
-are valid.
 
 -General options
   -v --version           Display version.
@@ -79,51 +76,35 @@ are valid.
                          operations.
                          Defaults to \"none\".
 
--Set Package-list generation options
-  -t --toolchain=TYPE    Rebuild toolchain. This is *ALWAYS* on. Use option to
-                         specify the toolchain rebuild. See below.
+-Package-list generation options
   -s --system            Rebuild set:system after the toolchain.
   -e --everything        Rebuild set:everything after the system. Implies system.
 
-This is not a general-operation wrapper script, it is merely
-intended to help in making one's installation consistent after
-a toolchain or C/CXX/LDFLAG change.
+This is not a general-operation wrapper script, it is merely intended to help in
+making one's installation consistent after a toolchain or C/CXX/LDFLAG change.
+It *does not* automagically detect what updates will be done and do it for you.
+It will not work binutils-config or gcc-config for you.
+It is most certainly *NOT* intended to be run *before* the new toolchain package
+is installed.
+*I* use it to make my system consistent *after* that has been done.
+If you want a script that does more, WRITE ONE.
+
+Notes.
 During package-list generation, \"toolchain\" is subtracted from \"system\",
 and \"system\" from \"everything\", in order to remove unnecessary
 compilation and minimize execution time.
 
-Various \"toolchain\" operations are available, the default can be overridden
-by passing their names as arguments to the toolchain option:
+The toolchain is rebuilt in this order. As far as I know this is the \"correct\"
+order, if there is such a thing:
 
-  properize -et gcc-single
+  glibc binutils gcc glibc binutils gcc
 
-  properize --system --toolchain=binutils-single
-
-and so on.
-
-The toolchain operation types, and the packages that will be rebuilt,
-in order, are:
-
-Full rebuilds:
-
-  headers          =\"linux-headers glibc binutils gcc glibc binutils gcc\" (default)
-  glibc            =\"glibc binutils gcc glibc binutils gcc\"
-  binutils|gcc     =\"binutils gcc binutils gcc\"
-
-Single builds:
-
-  headers-single        =\"linux-headers glibc binutils gcc\"
-  glibc-single          =\"glibc binutils gcc\"
-  binutils|gcc-single   =\"binutils gcc\"
-
-After the standard toolchain list is generated, some packages are appended if they exist:
+After that's done, if they're present,
 
   libtool
   libstdc++-v3
 
-Currently, the toolchain builds are lifted straight out of emwrap.sh,
-Copyright (c) 2004-2007 Hiel Van Campen.
-If you have a better idea, I'm open to suggestions.\n\n"))
+will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 
 ;;; Pipe-reading
 ;; Runs a pipe an input pipe and returns the result - one line only.
@@ -217,22 +198,22 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 
 ;;; Action-list generation
 ;; Generates a list of actions and passes it to execute-action-list.
-(define (generate-action-list toolchain system everything pretend
-			      upgrade pre-dependencies checks chost)
-  (define (generate-toolchain toolchain upgrade pre-dependencies)
-    (let* ((toolchain-list '('glibc 'binutils 'gcc 'glibc 'binutils 'gcc 'libtool 'libstc++)))
-	  )
-      ))
+(define (generate-action-list system everything pretend
+			      upgrade pre-dependencies checks)
+  (define (generate-toolchain upgrade pre-dependencies)
+    (let* ((toolchain-list '('glibc 'binutils 'gcc 'glibc 'binutils 'gcc))
+	   (libtool-needed
+	    (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-devel/ | grep libtool"))
+		#f #t))
+	   (libstdc++-needed
+	    (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-libs/ | grep libstdc\\+\\+-v3"))
+		#f #t)))
+      (if libtool-needed (append! toolchain-list '('libtool)))
+      (if libstdc++-needed (append! toolchain-list '('libstdc++-v3)))))
   (let ((toolchain-list (generate-toolchain toolchain upgrade pre-dependcies)))
     ))
 
 ;;; Validity predicates
-;; Checks wether the given option is a valid toolchain-action spec.
-;; <arg> must be a string.
-;; Returns boolean.
-(define (valid-toolchain-option? arg)
-  (regexp-match? (string-match "^((headers|gcc|binutils|glibc){1}(-single)?)$" arg)))
-
 ;; Checks a configuration file for problems.
 ;; <file> must be a string.
 ;; Returns boolean.
@@ -269,15 +250,10 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; You'll need to use (receive) or similar.
 (define (read-configuration-file file)
   (let* ((resume-file (read-$var-from-file "RESUME_FILE" file))
-	 (default-toolchain (read-$var-from-file "DEFAULT_TOOLCHAIN" file))
-	 (default-toolchain-ok (valid-toolchain-option? default-toolchain))
 	 (resume-directory
 	  (match:substring (string-match "^(/.*)(/)(.*)$" resume-file) 1))
 	 (resume-directory-ok (valid-resume-directory? resume-directory))
 	 (resume-file-ok (valid-resume-file? resume-file))
-	 (paludis-bashrc (read-$var-from-file "PALUDIS_BASHRC" file))
-	 (chost (read-$var-from-file "CHOST" paludis-bashrc))
-	 (chost-ok (not (eof-object? chost))))
     (cond ((and (not resume-directory-ok)
 		(not resume-file-ok))
 	   (begin (display "\nThere's a problem with the resume-file you specified:\n")
@@ -290,17 +266,11 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	   (begin (display "\nThere's a problem with the resume-file you specified:\n")
 		  (display "Properize needs +rwx permissions to the containing directory.\n")
 		  (exit))))
-    (if (not default-toolchain-ok)
-	(begin (display "\n\"") (display default-toolchain) (display"\"")
-	       (display " is not a valid toolchain option.\n") (exit)))
-    (if (not chost-ok)
-	(begin (display "\nPaludis' bashrc does not contain a CHOST variable.\n")
-	       (display "Please set one and try again, kthnx.\n") (exit)))
-    (values resume-file default-toolchain chost)))
+    resume-file)))
 
 ;;; Command-line option parser
 ;; Parses commandline using (ice-9 getopt-long).
-(define (parse-commandline default-toolchain)
+(define (parse-commandline)
   (let* ((option-spec `((help (single-char #\h) (value #f))
 			(version (single-char #\v) (value #f))
 			(pretend (single-char #\p) (value #f))
@@ -309,8 +279,6 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 			(pre-dependencies (value #t))
 			(checks (value #t))
 			(resume (single-char #\r) (value #f))
-			(toolchain (single-char #\t) (value #t)
-				   (predicate ,valid-toolchain-option?))
 			(system (single-char #\s) (value #f))
 			(everything (single-char #\e) (value #f))))
 	 (options (getopt-long (command-line) option-spec))
@@ -322,7 +290,6 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	 (pre-dependencies-wanted (option-ref options 'pre-dependencies "discard"))
 	 (checks-wanted (option-ref options 'checks "none"))
 	 (resume-wanted (option-ref options 'resume #f))
-	 (toolchain-wanted (option-ref options 'toolchain default-toolchain))
 	 (system-wanted (option-ref options 'system #f))
 	 (everything-wanted (option-ref options 'everything #f)))
     (values help-wanted
@@ -333,7 +300,6 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 	    pre-dependencies-wanted
 	    checks-wanted
 	    resume-wanted
-	    toolchain-wanted
 	    system-wanted
 	    everything-wanted)))
 
@@ -342,9 +308,7 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;; initial environment, and initiates action-list generation or resuming and action-list
 ;; execution.
 (define (parse-options configuration-file)
-  (let-values* (((resume-file
-		  default-toolchain
-		  chost) (read-configuration-file configuration-file))
+  (let-values* (((resume-file) (read-configuration-file configuration-file))
 		((help-wanted
 		  version-wanted
 		  pretend-wanted
@@ -353,7 +317,6 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 		  pre-dependencies-wanted
 		  checks-wanted
 		  resume-wanted
-		  toolchain-wanted
 		  system-wanted
 		  everything-wanted) (parse-commandline default-toolchain)))
 	       ;; Check for these before anything else.
@@ -375,14 +338,12 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 					     #t
 					     system-wanted)))
 		     (if verbose (display "\nInitializing...\n"))
-		     (generate-action-list toolchain-wanted
-					   system-wanted
+		     (generate-action-list system-wanted
 					   everything-wanted
 					   pretend-wanted
 					   upgrade-wanted
 					   pre-dependencies-wanted
-					   checks-wanted
-					   chost)))))
+					   checks-wanted)))))
 
 ;;; The world is burning, run!
 ;; Validates non-option environment, starts option parsing.
