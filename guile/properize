@@ -172,10 +172,24 @@ If you have a better idea, I'm open to suggestions.\n\n"))
       #f))
 
 ;;; (gcc|binutils)-config handlers
-;; much, MUCH later.
-;gcc-config i686-pc-linux-gnu-4.1.2
-;$(source /etc/paludis/bashrc 2>/dev/null; echo $CHOST)
-;(match:substring (string-match "^(sys-devel/gcc-)([.0-9r]+(-r[0-9])?)(.*)$" package) 2)
+;; Generate a command that can be passed as an argument to system-execute-action
+;; to switch to a given version of binutils|gcc.
+;; <chost>:string must be the valid CHOST for the installation.
+;; <fqpn>:string must be the fully-qualified-package-name of the gcc|binutils
+;; version to switch to.
+(define (binutils-config-generate-command chost fqpn)
+  (let ((version ((match:substring
+		   (string-match "^(sys-devel/binutils-)([.0-9r]+)(.*)$" package) 2))))
+    (string-append "binutils-config " chost "-" version)))
+
+(define (binutils-config-generate-command chost fqpn)
+  (let ((version ((match:substring
+		   (string-match "^(sys-devel/gcc-)([.0-9r]+)(.*)$" package) 2))))
+    (string-append "gcc-config " chost "-" version)))
+
+;;gcc-config i686-pc-linux-gnu-4.1.2
+;;$(source /etc/paludis/bashrc 2>/dev/null; echo $CHOST)
+;;(match:substring (string-match "^(sys-devel/gcc-)([.0-9r]+(-r[0-9])?)(.*)$" package) 2)
 
 ;;; Paludis handlers
 ;; Generates a command that can be passed as an argument to system-execute-action to build a
