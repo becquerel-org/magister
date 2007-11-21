@@ -171,22 +171,6 @@ If you have a better idea, I'm open to suggestions.\n\n"))
       #t
       #f))
 
-;;; (gcc|binutils)-config handlers
-;; Generate a command that can be passed as an argument to system-execute-action
-;; to switch to a given version of binutils|gcc.
-;; <chost>:string must be the valid CHOST for the installation.
-;; <fqpn>:string must be the fully-qualified-package-name of the gcc|binutils
-;; version to switch to.
-(define (binutils-config-generate-command chost fqpn)
-  (let ((version ((match:substring
-		   (string-match "^(sys-devel/binutils-)([.0-9r]+)(.*)$" package) 2))))
-    (string-append "binutils-config " chost "-" version)))
-
-(define (binutils-config-generate-command chost fqpn)
-  (let ((version ((match:substring
-		   (string-match "^(sys-devel/gcc-)([.0-9r]+)(.*)$" package) 2))))
-    (string-append "gcc-config " chost "-" version)))
-
 ;;; Paludis handlers
 ;; Generates a command that can be passed as an argument to system-execute-action to build a
 ;; package.
@@ -234,7 +218,13 @@ If you have a better idea, I'm open to suggestions.\n\n"))
 ;;; Action-list generation
 ;; Generates a list of actions and passes it to execute-action-list.
 (define (generate-action-list toolchain system everything pretend
-			      upgrade pre-dependencies checks chost) "stub")
+			      upgrade pre-dependencies checks chost)
+  (define (generate-toolchain toolchain upgrade pre-dependencies)
+    (let* ((toolchain-list '('glibc 'binutils 'gcc 'glibc 'binutils 'gcc 'libtool 'libstc++)))
+	  )
+      ))
+  (let ((toolchain-list (generate-toolchain toolchain upgrade pre-dependcies)))
+    ))
 
 ;;; Validity predicates
 ;; Checks wether the given option is a valid toolchain-action spec.
@@ -402,7 +392,8 @@ If you have a better idea, I'm open to suggestions.\n\n"))
       (begin (display "\nThere is a problem with the configuration file;\n")
 	     (display "Please check your syntax.\n")
 	     (exit)))
-  (if (null? (cdr (command-line))) ; if called w. no arguments, print help and exit.
+  ;; if called w. no arguments, print help and exit.
+  (if (null? (cdr (command-line)))
       (begin (print-header) (print-help) (exit))
       (parse-options *system-configuration-file*)))
 
