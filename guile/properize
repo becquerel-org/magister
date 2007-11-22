@@ -193,6 +193,12 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
     (do ((package (read port) (read port)))
 	((eof-object? package) (close-pipe port) (cdr package-list))
       (append! package-list `(,(symbol->string package))))))
+;;
+(define (paludis-pretend action-list)
+  (do ((action-list action-list (cdr action-list))
+       (pretend-command "paludis -pi1 --dl-deps-default discard --show-reasons summary --show-use-descriptions if-use-changed"))
+      ((null? action-list) (system-execute-action pretend-command) (exit))
+    (set! pretend-command (string-append pretend-command " " (car action-list)))))
 
 ;;; Action-list execution
 ;; Iterates over the action list, saving it to disk before running it.
@@ -218,21 +224,32 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	(append! toolchain-packages
 		 (paludis-extract-packages (symbol->string (car toolchain-list))
 					   upgrade "discard" #t)))))
-  (let* ((toolchain-list (generate-toolchain-list upgrade))
-	 (if (or system everything)
-	     (system-list (lset-difference
-			   string=?
-			   (paludis-extract-packages "system" upgrade pre-dependencies)
-			   toolchain-list))
-	     '())
-	 (if everything
-	     (everything-list (lset-difference
-			       string=?
-			       (paludis-extract-packages "everything" upgrade pre-dependencies)
-			       system-list
-			       toolchain-list))
-	     '()))
-    ))
+  (display "\nCollecting Toolchain... ")
+  (define toolchain-list (generate-toolchain-list upgrade))
+  (define action-list toolchain-list)
+  (display "done\n")
+  (if (or system everything)
+      (begin (display "\nCollecting System... ")
+	     (define system-list
+	       (lset-difference
+		string=?
+		(paludis-extract-packages "system" upgrade pre-dependencies)
+		toolchain-list))
+	     (set! action-list (append action-list system-list))
+	     (display "done\n")))
+  (if everything
+      (begin (display "\nCollecting Everything... ")
+	     (define everything-list
+	       (lset-difference
+		string=?
+		(paludis-extract-packages "everything" upgrade pre-dependencies)
+		system-list
+		toolchain-list))
+	     (set! action-list (append action-list everything-list))
+	     (display "done\n")))
+  (if pretend
+      (paludis-pretend action-list)
+      (execute-action-list action-list)))
 
 ;;; File validity predicates
 ;; Checks a configuration file for problems.
