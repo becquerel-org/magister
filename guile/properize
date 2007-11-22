@@ -219,15 +219,19 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 		 (paludis-extract-packages (symbol->string (car toolchain-list))
 					   upgrade "discard" #t)))))
   (let* ((toolchain-list (generate-toolchain-list upgrade))
-	 (system-list (lset-difference
-		       string=?
-		       (paludis-extract-packages "system" upgrade pre-dependencies)
-		       toolchain-list))
-	 (everything-list (lset-difference
+	 (if (or system everything)
+	     (system-list (lset-difference
 			   string=?
-			   (paludis-extract-packages "everything" upgrade pre-dependencies)
-			   system-list
-			   toolchain-list)))
+			   (paludis-extract-packages "system" upgrade pre-dependencies)
+			   toolchain-list))
+	     '())
+	 (if everything
+	     (everything-list (lset-difference
+			       string=?
+			       (paludis-extract-packages "everything" upgrade pre-dependencies)
+			       system-list
+			       toolchain-list))
+	     '()))
     ))
 
 ;;; File validity predicates
