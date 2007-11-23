@@ -31,7 +31,7 @@
 (use-modules (ice-9 receive))
 (use-modules (srfi srfi-11))
 ;; SRFI-1, extended list ops.
-(use-modules (srfi srfi-11))
+(use-modules (srfi srfi-1))
 
 ;;; Display functions
 ;; Prints version and basic copyright information.
@@ -177,26 +177,37 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; FIXME: Gotta figure out a way to make it more debuggable. How expensive would it be to
 ;; implement w. inbuilt Regexp & String-ops?
 ;; Guile bidirectional pipes do not a good text filter make.
-(define* (paludis-extract-packages target upgrade pre-dependencies #:optional (toolchain . #f))
+(define* (paludis-extract-packages target upgrade pre-dependencies #:optional (toolchain #f))
   (let* ((command (string-append "paludis -pi "
 				 (if upgrade
 				     "--dl-upgrade always "
 				     "--dl-upgrade as-needed ")
 				 (if toolchain
 				     "--dl-deps-default discard "
-				     "--dl-installed-deps-pre " pre-dependecies " ")
+				     (string-append "--dl-installed-deps-pre "
+						    pre-dependencies " "
+						    "--dl-reinstall always "))
 				 target
 				 " | egrep '^\\* .*/.* '"
 				 " | awk '{print $2}'"))
 	 (port (open-input-pipe command))
-	 (package-list '("")))
-    (do ((package (read port) (read port)))
+	 (package-list '(""))
+	 (versionless-virtual-matcher
+	  (make-regexp "^(virtual/[[:alpha:]]+)(-[[:alpha:]]+[[:alnum:]]*)*$")))
+    (do ((package (symbol->string (read port)) (symbol->string (read port))))
 	((eof-object? package) (close-pipe port) (cdr package-list))
-      (append! package-list `(,(symbol->string package))))))
-;;
+      (set! package-list (append package-list
+				 (list (string-append
+					(if (regexp-match? (regexp-exec
+							    versionless-virtual-matcher
+							    package))
+					    ""
+					    "=")
+					package)))))))
+;; Does what it says on the box, tbfh.
 (define (paludis-pretend action-list)
   (do ((action-list action-list (cdr action-list))
-       (pretend-command "paludis -pi1 --dl-deps-default discard --show-reasons summary --show-use-descriptions if-use-changed"))
+       (pretend-command "paludis -pi1 --dl-deps-default discard --show-reasons summary --show-use-descriptions changed"))
       ((null? action-list) (system-execute-action pretend-command) (exit))
     (set! pretend-command (string-append pretend-command " " (car action-list)))))
 
@@ -208,48 +219,53 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; Generates a list of actions and passes it to execute-action-list.
 (define (generate-action-list system everything pretend
 			      upgrade pre-dependencies checks)
-  (define (generate-toolchain-list upgrade)
-    (let ((toolchain-list '('glibc 'binutils 'gcc 'glibc 'binutils 'gcc))
-	  (libtool-needed
-	   (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-devel/ | grep libtool"))
-	       #f #t))
-	  (libstdc++-needed
-	   (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-libs/ | grep libstdc\\+\\+-v3"))
-	       #f #t))
-	  (toolchain-packages '("")))
-      (if libtool-needed (append! toolchain-list '('libtool)))
-      (if libstdc++-needed (append! toolchain-list '('libstdc++-v3)))
-      (do ((toolchain-list toolchain-list (cdr toolchain-packages)))
-	  ((null? toolchain-list) (cdr toolchain-packages))
-	(append! toolchain-packages
-		 (paludis-extract-packages (symbol->string (car toolchain-list))
-					   upgrade "discard" #t)))))
-  (display "\nCollecting Toolchain... ")
-  (define toolchain-list (generate-toolchain-list upgrade))
-  (define action-list toolchain-list)
-  (display "done\n")
-  (if (or system everything)
-      (begin (display "\nCollecting System... ")
-	     (define system-list
-	       (lset-difference
-		string=?
-		(paludis-extract-packages "system" upgrade pre-dependencies)
-		toolchain-list))
-	     (set! action-list (append action-list system-list))
-	     (display "done\n")))
-  (if everything
-      (begin (display "\nCollecting Everything... ")
-	     (define everything-list
-	       (lset-difference
-		string=?
-		(paludis-extract-packages "everything" upgrade pre-dependencies)
-		system-list
-		toolchain-list))
-	     (set! action-list (append action-list everything-list))
-	     (display "done\n")))
-  (if pretend
-      (paludis-pretend action-list)
-      (execute-action-list action-list)))
+  (let ((generate-toolchain-list
+	 (lambda (upgrade)
+	   (let ((toolchain-list '("glibc" "binutils" "gcc" "glibc" "binutils" "gcc"))
+		 (libtool-needed
+		  (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-devel/ | grep libtool"))
+		      #f #t))
+		 (libstdc++-needed
+		  (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-libs/ | grep libstdc\\+\\+-v3"))
+		      #f #t))
+		 (toolchain-packages '("")))
+	     (if libtool-needed (append! toolchain-list '("libtool")))
+	     (if libstdc++-needed (append! toolchain-list '("libstdc++-v3")))
+	     (do ((toolchain-list toolchain-list (cdr toolchain-list)))
+		 ((null? toolchain-list) (cdr toolchain-packages))
+	       (append! toolchain-packages
+			(paludis-extract-packages (car toolchain-list)
+						  upgrade "discard" #t))))))
+	(tc-list '(""))
+	(action-list '(""))
+	(system-list '(""))
+	(everything-list '("")))
+    (display "\nCollecting Toolchain... ")
+    (set! tc-list (generate-toolchain-list upgrade))
+    (set! action-list tc-list)
+    (display "done\n")
+    (if (or system everything)
+	(begin (display "\nCollecting System... ")
+	       (set! system-list
+		     (lset-difference
+		      string=?
+		      (paludis-extract-packages "system" upgrade pre-dependencies)
+		      tc-list))
+	       (set! action-list (append action-list system-list))
+	       (display "done\n")))
+    (if everything
+	(begin (display "\nCollecting Everything... ")
+	       (set! everything-list
+		     (lset-difference
+		      string=?
+		      (paludis-extract-packages "everything" upgrade pre-dependencies)
+		      system-list
+		      tc-list))
+	       (set! action-list (append action-list everything-list))
+	       (display "done\n")))
+    (if pretend
+	(paludis-pretend action-list)
+	(begin (display action-list) (newline)))))
 
 ;;; File validity predicates
 ;; Checks a configuration file for problems.
@@ -276,22 +292,21 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; otherwise returns false.
 ;; FIXME: seee (valid-resume-directory?)
 (define (valid-resume-file? file)
-  (if (or (not (access? state-file F_OK))
-	  (access? state-file (logior W_OK R_OK)))
+  (if (or (not (access? file F_OK))
+	  (access? file (logior W_OK R_OK)))
       #t
       #f))
 
 ;;; Configuration file parser.
 ;; Reads a configuration file, checking for the validity of the options therein.
 ;; <file> must be a string, and better be a valid filename-cum-path too.
-;; Returns 3 values, the resume-directory, the default-toolchain, and the CHOST.
-;; You'll need to use (receive) or similar.
+;; Returns the resume-file location.
 (define (read-configuration-file file)
   (let* ((resume-file (read-$var-from-file "RESUME_FILE" file))
 	 (resume-directory
 	  (match:substring (string-match "^(/.*)(/)(.*)$" resume-file) 1))
 	 (resume-directory-ok (valid-resume-directory? resume-directory))
-	 (resume-file-ok (valid-resume-file? resume-file))
+	 (resume-file-ok (valid-resume-file? resume-file)))
     (cond ((and (not resume-directory-ok)
 		(not resume-file-ok))
 	   (begin (display "\nThere's a problem with the resume-file you specified:\n")
@@ -304,7 +319,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	   (begin (display "\nThere's a problem with the resume-file you specified:\n")
 		  (display "Properize needs +rwx permissions to the containing directory.\n")
 		  (exit))))
-    resume-file)))
+    resume-file))
 
 ;;; Command-line option parser
 ;; Parses commandline using (ice-9 getopt-long).
@@ -317,6 +332,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 			(pre-dependencies (value #t))
 			(checks (value #t))
 			(resume (single-char #\r) (value #f))
+			(toolchain (single-char #\t) (value #f))
 			(system (single-char #\s) (value #f))
 			(everything (single-char #\e) (value #f))))
 	 (options (getopt-long (command-line) option-spec))
@@ -328,6 +344,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	 (pre-dependencies-wanted (option-ref options 'pre-dependencies "discard"))
 	 (checks-wanted (option-ref options 'checks "none"))
 	 (resume-wanted (option-ref options 'resume #f))
+	 (toolchain-wanted (option-ref options 'toolchain #t))
 	 (system-wanted (option-ref options 'system #f))
 	 (everything-wanted (option-ref options 'everything #f)))
     (values help-wanted
@@ -346,7 +363,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; initial environment, and initiates action-list generation or resuming and action-list
 ;; execution.
 (define (parse-options configuration-file)
-  (let-values* (((resume-file) (read-configuration-file configuration-file))
+  (let-values (((resume-file) (read-configuration-file configuration-file))
 		((help-wanted
 		  version-wanted
 		  pretend-wanted
@@ -356,7 +373,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 		  checks-wanted
 		  resume-wanted
 		  system-wanted
-		  everything-wanted) (parse-commandline default-toolchain)))
+		  everything-wanted) (parse-commandline)))
 	       ;; Check for these before anything else.
 	       (if help-wanted
 		   (begin (print-header) (print-help) (exit)))
