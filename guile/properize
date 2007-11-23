@@ -79,7 +79,8 @@ Option arguments must follow the option immediately, both these forms are valid:
                          Defaults to \"none\".
 
 -Package-list generation options
-  -s --system            Rebuild set:system after the toolchain.
+  -t --toolchain         Rebuild the toolchain.
+  -s --system            Rebuild set:system after the toolchain. Implies toolchain.
   -e --everything        Rebuild set:everything after the system. Implies system.
 
 This is not a general-operation wrapper script, it is merely intended to help in
