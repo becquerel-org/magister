@@ -194,7 +194,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	 (port (open-input-pipe command))
 	 (package-list '(""))
 	 (versionless-virtual-matcher
-	  (make-regexp "^(virtual/[[:alpha:]]+)(-[[:alpha:]]+[[:alnum:]]*)*$")))
+	  (make-regexp "^(virtual/[+[:alpha:]]+)(-[+[:alpha:]]+[+[:alnum:]]*)*$")))
     (do ((package (read port) (read port)))
 	((eof-object? package) (close-pipe port) (cdr package-list))
       (set! package-list (append package-list
@@ -278,7 +278,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 						  resume-file))
       (set! finalized-action-list (append finalized-action-list
 					  (list (paludis-generate-command
-						 (car package-list)
+						 (car action-list)
 						 pretend
 						 upgrade
 						 checks)))))))
