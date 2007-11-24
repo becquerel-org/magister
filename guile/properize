@@ -12,7 +12,7 @@
 
 ;;; Global variables and constants
 ;; The version of the application, duh.
-(define *properize-version* "0.0.2")
+(define *properize-version* "0.1.0")
 ;; The location of the configuration file.
 (define *system-configuration-file* "/etc/properize.conf")
 ;; Yay global variables, what is this, java???
