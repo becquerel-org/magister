@@ -195,16 +195,16 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	 (package-list '(""))
 	 (versionless-virtual-matcher
 	  (make-regexp "^(virtual/[[:alpha:]]+)(-[[:alpha:]]+[[:alnum:]]*)*$")))
-    (do ((package (symbol->string (read port)) (symbol->string (read port))))
+    (do ((package (read port) (read port)))
 	((eof-object? package) (close-pipe port) (cdr package-list))
       (set! package-list (append package-list
 				 (list (string-append
 					(if (regexp-match? (regexp-exec
 							    versionless-virtual-matcher
-							    package))
+							    (symbol->string package)))
 					    ""
 					    "=")
-					package)))))))
+					(symbol->string package))))))))
 ;; Does what it says on the box, tbfh.
 (define (paludis-pretend action-list)
   (do ((action-list action-list (cdr action-list))
@@ -214,12 +214,18 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 
 ;;; Action-list execution
 ;; Iterates over the action list, saving it to disk before running it.
-(define (execute-action-list action-list) "stub")
+(define (execute-action-list action-list resume-file)
+  (do ((action-list action-list (cdr action-list)))
+      ((null? action-list) (delete-file resume-file))
+    (resume-write resume-file action-list)
+    (if (not (system-execute-action (car action-list)))
+	(begin (display "\nHmm, paludis did not exit happy. Fixit & try resuming, k?\n")
+	       (exit)))))
 
 ;;; Action-list generation
 ;; Generates a list of actions and passes it to execute-action-list.
 (define (generate-action-list system everything pretend
-			      upgrade pre-dependencies checks)
+			      upgrade pre-dependencies checks resume-file)
   (let ((generate-toolchain-list
 	 (lambda (upgrade)
 	   (let ((toolchain-list '("glibc" "binutils" "gcc" "glibc" "binutils" "gcc"))
@@ -265,8 +271,17 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	       (set! action-list (append action-list everything-list))
 	       (display "done\n")))
     (if pretend
-	(paludis-pretend action-list)
-	(begin (display action-list) (newline)))))
+	(paludis-pretend action-list))
+    (do ((action-list action-list (cdr action-list))
+	 (finalized-action-list '("")))
+	((null? action-list) (execute-action-list (cdr finalized-action-list)
+						  resume-file))
+      (set! finalized-action-list (append finalized-action-list
+					  (list (paludis-generate-command
+						 (car package-list)
+						 pretend
+						 upgrade
+						 checks)))))))
 
 ;;; File validity predicates
 ;; Checks a configuration file for problems.
@@ -360,9 +375,9 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	    everything-wanted)))
 
 ;;; Argument parser
-;; Controls parsing and validation of file and commandline options, sets global options and
-;; initial environment, and initiates action-list generation or resuming and action-list
-;; execution.
+;; Controls parsing and validation of file and commandline options, sets global
+;; options and initial environment, and initiates action-list generation or resuming
+;; and action-list execution.
 (define (parse-options configuration-file)
   (let-values (((resume-file) (read-configuration-file configuration-file))
 		((help-wanted
@@ -384,8 +399,8 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	       ;; Regardless, we clear the PALUDIS_OPTIONS env var.
 	       (unsetenv "PALUDIS_OPTIONS")
 	       (if resume-wanted
-		   ;; If we got told to resume, read the state file and pass the action-list
-		   ;; to (execute-action-list).
+		   ;; If we got told to resume, read the state file and pass the
+		   ;; action-list to (execute-action-list).
 		   (let ((action-list (resume-read resume-file)))
 		     (if verbose (display "\nResuming...\n"))
 		     (execute-action-list action-list))
@@ -399,7 +414,8 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 					   pretend-wanted
 					   upgrade-wanted
 					   pre-dependencies-wanted
-					   checks-wanted)))))
+					   checks-wanted
+					   resume-file)))))
 
 ;;; The world is burning, run!
 ;; Validates non-option environment, starts option parsing.
