@@ -9,7 +9,7 @@
 
 ;;; Global variables and constants
 ;; The version of the application, duh.
-(define *properize-version* "0.1.3")
+(define *properize-version* "0.1.4")
 ;; The location of the configuration file.
 (define *system-configuration-file* "/etc/properize.conf")
 ;; Yay global variables, what is this, java???
@@ -161,6 +161,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
   (string-append "paludis -i1 "
 		 "--checks " checks " "
 		 "--dl-deps-default discard "
+		 "--debug-build none "
 		 package))
 
 ;; Given a target, generates a list of the packages to be installed.
@@ -223,7 +224,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	 (lambda (upgrade)
 	   (let ((toolchain-list '("linux-headers" "glibc" "binutils" "gcc" "glibc" "binutils" "gcc"))
 		 (libtool-needed
-		  (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-devel/ | grep libtool"))
+		  (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-devel/ | girep libtool"))
 		      #f #t))
 		 (libstdc++-needed
 		  (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-libs/ | grep libstdc\\+\\+-v3"))
