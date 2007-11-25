@@ -12,7 +12,7 @@
 
 ;;; Global variables and constants
 ;; The version of the application, duh.
-(define *properize-version* "0.1.1")
+(define *properize-version* "0.1.2")
 ;; The location of the configuration file.
 (define *system-configuration-file* "/etc/properize.conf")
 ;; Yay global variables, what is this, java???
@@ -160,16 +160,10 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; package.
 ;; <package> must be a string.
 ;; Returns a string.
-(define (paludis-generate-command package pretend upgrade checks)
-  (string-append "paludis "
-		 (if pretend
-		     "-pi1 "
-		     "-i1 ")
+(define (paludis-generate-command package checks)
+  (string-append "paludis -i1 "
 		 "--checks " checks " "
 		 "--dl-deps-default discard "
-		 (if upgrade
-		     "--dl-upgrade always "
-		     "--dl-upgrade as-needed ")
 		 package))
 
 ;; Given a target, generates a list of the packages to be installed.
@@ -230,7 +224,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 			      upgrade pre-dependencies checks resume-file)
   (let ((generate-toolchain-list
 	 (lambda (upgrade)
-	   (let ((toolchain-list '("glibc" "binutils" "gcc" "glibc" "binutils" "gcc"))
+	   (let ((toolchain-list '("linux-headers" "glibc" "binutils" "gcc" "glibc" "binutils" "gcc"))
 		 (libtool-needed
 		  (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-devel/ | grep libtool"))
 		      #f #t))
@@ -281,8 +275,6 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
       (set! finalized-action-list (append finalized-action-list
 					  (list (paludis-generate-command
 						 (car action-list)
-						 pretend
-						 upgrade
 						 checks)))))))
 
 ;;; File validity predicates
