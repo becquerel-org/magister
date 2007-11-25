@@ -12,7 +12,7 @@
 
 ;;; Global variables and constants
 ;; The version of the application, duh.
-(define *properize-version* "0.1.0")
+(define *properize-version* "0.1.1")
 ;; The location of the configuration file.
 (define *system-configuration-file* "/etc/properize.conf")
 ;; Yay global variables, what is this, java???
@@ -166,6 +166,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 		     "-pi1 "
 		     "-i1 ")
 		 "--checks " checks " "
+		 "--dl-deps-default discard "
 		 (if upgrade
 		     "--dl-upgrade always "
 		     "--dl-upgrade as-needed ")
@@ -183,6 +184,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 				 (if upgrade
 				     "--dl-upgrade always "
 				     "--dl-upgrade as-needed ")
+				 "--dl-new-slots as-needed "
 				 (if toolchain
 				     "--dl-deps-default discard "
 				     (string-append "--dl-installed-deps-pre "
