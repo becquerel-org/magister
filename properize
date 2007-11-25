@@ -393,7 +393,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 		   ;; If we got told to resume, read the state file and pass the
 		   ;; action-list to (execute-action-list).
 		   (let ((action-list (resume-read resume-file)))
-		     (if verbose (display "\nResuming...\n"))
+		     (display "\nResuming...\n")
 		     (execute-action-list action-list resume-file))
 		   ;; Else, proceed with potion mangling and action-list generation.
 		   (let ((system-wanted (if everything-wanted
