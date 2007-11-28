@@ -186,19 +186,11 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 				 " | egrep '^\\* .*/.* '"
 				 " | awk '{print $2}'"))
 	 (port (open-input-pipe command))
-	 (package-list '(""))
-	 (versionless-virtual-matcher
-	  (make-regexp "^(virtual/[+[:alpha:]]+)(-[+[:alpha:]]+[+[:alnum:]]*)*$")))
+	 (package-list '("")))
     (do ((package (read port) (read port)))
 	((eof-object? package) (close-pipe port) (cdr package-list))
       (set! package-list (append package-list
-				 (list (string-append
-					(if (regexp-match? (regexp-exec
-							    versionless-virtual-matcher
-							    (symbol->string package)))
-					    ""
-					    "=")
-					(symbol->string package))))))))
+				 (list (symbol->string package)))))))
 ;; Does what it says on the box, tbfh.
 (define (paludis-pretend action-list)
   (do ((action-list action-list (cdr action-list))
