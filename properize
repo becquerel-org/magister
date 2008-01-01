@@ -224,7 +224,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 
 ;;; Action-list generation
 ;; {{{ Generates a list of actions and passes it to execute-action-list.
-(define (generate-action-list system everything pretend
+(define (generate-action-list toolchain system everything pretend
 			      upgrade pre-dependencies checks resume-file)
   (let ((generate-toolchain-list
 	 (lambda (upgrade)
@@ -245,7 +245,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	(everything-list '("")))
     (display "\nCollecting Toolchain... ")
     (set! tc-list (generate-toolchain-list upgrade))
-    (set! action-list tc-list)
+    (if toolchain (set! action-list tc-list))
     (display "done\n")
     (if (or system everything)
 	(begin (display "\nCollecting System... ")
@@ -254,7 +254,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 		      string=?
 		      (paludis-extract-packages "system" upgrade pre-dependencies)
 		      tc-list))
-	       (set! action-list (append action-list system-list))
+	       (if system (set! action-list (append action-list system-list)))
 	       (display "done\n")))
     (if everything
 	(begin (display "\nCollecting Everything... ")
@@ -370,6 +370,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	    pre-dependencies-wanted
 	    checks-wanted
 	    resume-wanted
+	    toolchain-wanted
 	    system-wanted
 	    everything-wanted)))
 ;; }}}
@@ -388,6 +389,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 		  pre-dependencies-wanted
 		  checks-wanted
 		  resume-wanted
+		  toolchain-wanted
 		  system-wanted
 		  everything-wanted) (parse-commandline)))
 	       ;; Check for these before anything else.
@@ -405,17 +407,15 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 		     (display "\nResuming...\n")
 		     (execute-action-list action-list resume-file))
 		   ;; Else, proceed with potion mangling and action-list generation.
-		   (let ((system-wanted (if everything-wanted
-					     #t
-					     system-wanted)))
-		     (if verbose (display "\nInitializing...\n"))
-		     (generate-action-list system-wanted
-					   everything-wanted
-					   pretend-wanted
-					   upgrade-wanted
-					   pre-dependencies-wanted
-					   checks-wanted
-					   resume-file)))))
+		   (if verbose (display "\nInitializing...\n"))
+		   (generate-action-list toolchain-wanted
+					 system-wanted
+					 everything-wanted
+					 pretend-wanted
+					 upgrade-wanted
+					 pre-dependencies-wanted
+					 checks-wanted
+					 resume-file))))
 ;; }}}
 
 ;;; The world is burning, run!
