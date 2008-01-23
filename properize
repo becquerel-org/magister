@@ -245,7 +245,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	(everything-list '("")))
     (display "\nCollecting Toolchain... ")
     (set! tc-list (generate-toolchain-list upgrade))
-    (if toolchain (set! action-list tc-list))
+    (if toolchain (set! action-list (append action-list tc-list)))
     (display "done\n")
     (if (or system everything)
 	(begin (display "\nCollecting System... ")
@@ -266,6 +266,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 		      tc-list))
 	       (set! action-list (append action-list everything-list))
 	       (display "done\n")))
+    (set! action-list (cdr action-list))
     (if pretend
 	(paludis-pretend action-list))
     (do ((action-list action-list (cdr action-list))
@@ -407,15 +408,15 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 		     (display "\nResuming...\n")
 		     (execute-action-list action-list resume-file))
 		   ;; Else, proceed with potion mangling and action-list generation.
-		   (if verbose (display "\nInitializing...\n"))
-		   (generate-action-list toolchain-wanted
-					 system-wanted
-					 everything-wanted
-					 pretend-wanted
-					 upgrade-wanted
-					 pre-dependencies-wanted
-					 checks-wanted
-					 resume-file))))
+		   (begin (if verbose (display "\nInitializing...\n"))
+			  (generate-action-list toolchain-wanted
+						system-wanted
+						everything-wanted
+						pretend-wanted
+						upgrade-wanted
+						pre-dependencies-wanted
+						checks-wanted
+						resume-file)))))
 ;; }}}
 
 ;;; The world is burning, run!
