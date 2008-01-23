@@ -1,0 +1,21 @@
+#!/usr/bin/env scheme-script
+#!err5rs
+;;; -*- mode: Scheme; mode: folding -*-
+;;; name-to-be-decided
+
+;;; ERR5RS library loads
+(import (err5rs load))       ; ERR5RS (load)
+(import (rnrs base))         ; R6RS base
+(import (rnrs lists))        ; R6RS lists
+(import (rnrs sorting))      ; R6RS sorting
+(import (rnrs control))      ; R6RS control
+(import (rnrs conditions))   ; R6RS conditions
+(import (rnrs io simple))    ; R6RS simple I/O
+(import (rnrs io ports))     ; R6RS ports I/O
+(import (rnrs files))        ; R6RS files
+(import (rnrs programs))     ; R6RS programs
+
+;;; Global variables and constants
+(define *version* "0.1.5")
+(define *system-configuration-file* "/etc/properize.conf")
+(define verbose #t)
