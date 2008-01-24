@@ -1,23 +1,25 @@
 #!/usr/bin/env scheme-script
-#!err5rs
-;;; -*- mode: Scheme; mode: folding -*-
+#!r6rs ; -*- mode: Scheme; mode: folding; -*-
 ;;; name-to-be-decided
 ;;;
 ;;; Copyright (c) 2007 Leonardo Valeri Manera <lvalerimanera>@{NOSPAM}<google.com>
 ;;; This program is licensed under the terms of the General Public License version 2.
-;;; Based on the portage script emwrap.sh, (c) 2004-2007 Hiel Van Campen.
+;;; Inspired by the portage script emwrap.sh, (c) 2004-2007 Hiel Van Campen.
 
 ;;; ERR5RS library loads
-(import (err5rs load))       ; ERR5RS (load)
-(import (rnrs base))         ; R6RS base
-(import (rnrs lists))        ; R6RS lists
-(import (rnrs sorting))      ; R6RS sorting
-(import (rnrs control))      ; R6RS control
-(import (rnrs conditions))   ; R6RS conditions
-(import (rnrs io simple))    ; R6RS simple I/O
-(import (rnrs io ports))     ; R6RS ports I/O
-(import (rnrs files))        ; R6RS files
-(import (rnrs programs))     ; R6RS programs
+(import (rnrs base (6)))            ; R6RS base, for (library)
+(import (err5rs records procedural)); ERR5RS records (procedural API)
+(import (larceny compiler))         ; Separate compilation of ERR5RS files
+(import (rnrs unicode (6)))         ; R6RS unicode chars|strings
+(import (rnrs lists (6)))           ; R6RS lists
+(import (rnrs sorting (6)))         ; R6RS sorting
+(import (rnrs control (6)))         ; R6RS control
+(import (rnrs exceptions (6)))      ; R6RS exceptions
+(import (rnrs conditions (6)))      ; R6RS conditions
+(import (rnrs io ports (6)))        ; R6RS ports I/O
+(import (rnrs io simple (6)))       ; R6RS simple I/O
+(import (rnrs files (6)))           ; R6RS files
+(import (rnrs programs (6)))        ; R6RS programs
 
 ;;; Global variables and constants
 (define *version* "0.1.5")
@@ -131,4 +133,3 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	(begin (display "\nHmm, paludis did not exit happy. Fixit & try resuming, k?\n")
 	       (exit)))))
 ;; }}}
-

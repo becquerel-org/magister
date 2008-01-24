@@ -6,20 +6,13 @@
 ;;; This program is licensed under the terms of the General Public License version 2.
 ;;; Inspired by the portage script emwrap.sh, (c) 2004-2007 Hiel Van Campen.
 
-;;; ERR5RS library loads
-(import (rnrs base (6)))            ; R6RS base, for (library)
-(import (err5rs records procedural)); ERR5RS records (procedural API)
-(import (larceny compiler))         ; Separate compilation of ERR5RS files
-(import (rnrs unicode (6)))         ; R6RS unicode chars|strings
-(import (rnrs lists (6)))           ; R6RS lists
-(import (rnrs sorting (6)))         ; R6RS sorting
-(import (rnrs control (6)))         ; R6RS control
-(import (rnrs exceptions (6)))      ; R6RS exceptions
-(import (rnrs conditions (6)))      ; R6RS conditions
-(import (rnrs io ports (6)))        ; R6RS ports I/O
-(import (rnrs io simple (6)))       ; R6RS simple I/O
-(import (rnrs files (6)))           ; R6RS files
-(import (rnrs programs (6)))        ; R6RS programs
+;;; R5RS requires
+(require 'srfi-0)
+(require 'srfi-8)
+(require 'srfi-1) ;zomgerror
+(require 'string)
+(require 'std-ffi)
+(require 'unix)   ;zomgerror
 
 ;;; Global variables and constants
 (define *version* "0.1.5")
