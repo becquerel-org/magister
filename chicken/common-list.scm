@@ -49,12 +49,14 @@
 ;; `(srfi srfi-1)' for a complete list handling library.
 
 ;;; Code:
-
-(define-module (ice-9 common-list)
-  :export (adjoin union intersection set-difference reduce-init reduce
-	   some every notany notevery count-if find-if member-if remove-if
-	   remove-if-not delete-if! delete-if-not! butlast and? or?
-	   has-duplicates? pick pick-mappings uniq))
+;(define-module (ice-9 common-list)
+;  :export (adjoin union intersection set-difference reduce-init reduce
+;	   some every notany notevery count-if find-if member-if remove-if
+;	   remove-if-not delete-if! delete-if-not! butlast and? or?
+;	   has-duplicates? pick pick-mappings uniq))
+
+(declare (uses srfi-1))
+(use srfi-1)
 
 ;;"comlist.scm" Implementation of COMMON LISP list functions for Scheme
 ; Copyright (C) 1991, 1993, 1995 Aubrey Jaffer.

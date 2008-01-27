@@ -156,9 +156,12 @@
 
 ;;; Code:
 
-(define-module (ice-9 getopt-long)
-  :use-module ((ice-9 common-list) :select (some remove-if-not))
-  :export (getopt-long option-ref))
+;(define-module (ice-9 getopt-long)
+;  :use-module ((ice-9 common-list) :select (some remove-if-not))
+;  :export (getopt-long option-ref))
+
+(declare (uses syntax-case))
+(use syntax-case)
 
 (define option-spec-fields '(name
                              value
