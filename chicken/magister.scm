@@ -1,5 +1,7 @@
-#!/usr/bin/env csi
-;; -*- mode: Scheme; mode: folding; -*-
+#! /bin/sh
+#| -*- mode: Scheme; mode: folding; -*-
+exec csi -s $0 "$@"
+|#
 ;;; Copyright (c) 2007 Leonardo Valeri Manera <lvalerimanera>@{NOSPAM}<google.com>
 ;;; This program is licensed under the terms of the General Public License version 2.
 ;;; Based on the portage script emwrap.sh, (c) 2004-2007 Hiel Van Campen.
@@ -372,7 +374,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; }}}
 
 ;;; Command-line option parser
-;; {{{ Parses commandline using (ice-9 getopt-long).
+;; {{{ (tool-main): Parses commandline using (tool).
 (define (parse-commandline)
   (let* ((option-spec `((help (single-char #\h) (value #f))
 			(version (single-char #\v) (value #f))
