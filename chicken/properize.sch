@@ -41,12 +41,14 @@
 (use misc-extn-posix)
 ;; }}}
 
-;;; Global variables and constants
+;;; Top-level variables.
+;; {{{ Constants.
 (declare (always-bound *version* *system-configuration-file*))
 ;; The version of the application, duh.
-(define *version* "0.1.4")
+(define-constant *version* "0.1.5")
 ;; The location of the configuration file.
-(define *system-configuration-file* "/etc/properize.conf")
+(define-constant *system-configuration-file* "/etc/properize.conf")
+;; }}}
 ;; Yay global variables, what is this, java???
 (define verbose #t)
 
@@ -129,42 +131,41 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; }}}
 
 ;;; Pipe-reading
-;; {{{ Runs a pipe an input pipe and returns the result - one line only.
-;; <command> must be a string and a valid sh pipe.
-;; Returns whatever was in the 1st line of pipe's output, raw;
-;; typechcking is left to the receiver.
+;; {{{ (read-pipe-line): Runs an input pipe and returns the first line of the output.
+;; <command> must be a string and a valid sh command/pipe.
+;; Returns whatever was in the 1st line of pipe's output, as a string.
 (define (read-pipe-line command)
-  (call-with-input-pipe command read))
+  (with-input-from-pipe command read-line))
 ;; }}}
 
+;; {{{ (read-pipe-list): Runs an input pipe and returns the output.
+;; <command> must be a string and a valid sh command/pipe.
+;; Returns a list of strings, each string being one line of the output.
 (define (read-pipe-list command)
-  (let ((port (open-input-pipe command))
-	(pipe-list '()))
-    (for-each-line (lambda (line) (set! pipe-list (cons line pipe-list))) port)
-    pipe-list))
+  (with-input-from-pipe command read-lines))
+;; }}}
 
-;; {{{ Reads a $var from a file, and returns its result.
-;; <var> must be a string, the name of the $var you want to retrieve, sans the $
+;; {{{ (read-variable-from-file): Reads a configuration file, returning the value of variable var.
+;; <var> must be a string, the name of the variable you want to retrieve.
 ;; <file> must be a valid file identifier, either a file object or a string.
-;; Returns whatever was in the $var, as a string.
-(define (read-$var-from-file var file)
-  (let* ((source-echo-command (string-append "source " file " 2>/dev/null; echo $" var))
-	 (value (read-pipe-line source-echo-command)))
-    (cond ((symbol? value) (symbol->string value))
-	  ((number? value) (number->string value))
-	  (else value))))
+;; Returns the value of the variable, as a string.
+(define (read-variable-from-file var file)
+  (let ((varmatch (regexp (string-append var " = "))))
+    (string-substitute varmatch
+		       ""
+		       (car (grep varmatch
+				  (with-input-from-file file read-lines))))))
 ;; }}}
 
 ;;; Resume-file reading and writing
-;; {{{ Reads the action-list from the resume-file, and returns it.
+;; {{{ (resume-read): Reads the action-list from the resume-file, and returns it.
 ;; <resume-file> must be a string pointing to a file, or a readable file port.
 ;; Returns a list.
 (define (resume-read resume-file)
-  (let ((action-list (with-input-from-file resume-file (lambda () (read)))))
-    action-list))
+  (with-input-from-file resume-file read))
 ;; }}}
 
-;; {{{ Nothing fancy, just dumps the action-list into a file.
+;; {{{ (resume-write): Nothing fancy, just dumps the action-list into a file.
 ;; <resume-file> must be a string pointing to a file, or a readable file port.
 ;; <action-list> better be the list you wanna write to the resume-file
 ;; Returns undefined.
@@ -173,61 +174,73 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; }}}
 
 ;;; General command handlers
-;; {{{ Encapsulate :eval-exit so we can simply run paludis-execute-action as a condition.
-;; <action> must be a string.
-;; Returns a boolean (obviously).
+;; {{{ (system-execute-action): Encapsulate the exit value of a process so it can be used as a condition.
+;; <action> must be a string and a valid sh command/pipe.
+;; Returns a boolean.
 (define (system-execute-action action)
-  (if (= 0 (status:exit-val (system action)))
-      #t
-      #f))
+  (= 0 (nth-value 2 (process-wait (process-run action)))))
 ;; }}}
 
 ;;; Paludis handlers
-;; {{{ Generates a command that can be passed as an argument to system-execute-action to build a
-;; package.
+;; {{{ (paludis-generate-command): Generates an installation commandline.
 ;; <package> must be a string.
 ;; Returns a string.
-(define (paludis-generate-command package checks)
+(define (paludis-generate-command package checks debug)
   (string-append "paludis -i1 "
 		 "--checks " checks " "
 		 "--dl-deps-default discard "
-		 "--debug-build none "
+		 "--debug-build " debug " "
 		 package))
 ;; }}}
 
-;; {{{ Given a target, generates a list of the packages to be installed.
-;; <target> must be a string. It better be a valid set or pakage, yo =P
+;; {{{ (paludis-extract-packages): Given a target, generates a list of the packages to be installed.
+;; <target> must be a string. It better be a valid set or pakage.
+;; <upgrade> must be a boolean.
+;; <pre-dependendencies> must be a string value for the paludis option.
+;; <toolchain> must be a boolean, optional, defaults to #f.
 ;; Returns a list, '() in case the target is invalid - or in case of any other failure along the
 ;; way, tbqh.
-;; FIXME: Gotta figure out a way to make it more debuggable. How expensive would it be to
-;; implement w. inbuilt Regexp & String-ops?
-;; Guile bidirectional pipes do not a good text filter make.
-(define* (paludis-extract-packages target upgrade pre-dependencies #:optional (toolchain #f))
+(define (paludis-extract-packages target upgrade pre-dependencies . toolchain)
   (let* ((command (string-append "paludis -pi "
+				 "--show-use-descriptions none "
+				 "--compact "
 				 (if upgrade
 				     "--dl-upgrade always "
 				     "--dl-upgrade as-needed ")
 				 "--dl-new-slots as-needed "
-				 (if toolchain
+				 (if (optional toolchain #f)
 				     "--dl-deps-default discard "
 				     (string-append "--dl-installed-deps-pre "
 						    pre-dependencies " "
 						    "--dl-reinstall always "))
-				 target
-				 " | egrep '^\\* .*/.* '"
-				 " | awk '{print $2}'"))
-	 (port (open-input-pipe command))
-	 (package-list '("")))
-    (do ((package (read port) (read port)))
-	((eof-object? package) (close-pipe port) (cdr package-list))
-      (set! package-list (append package-list
-				 (list (symbol->string package)))))))
+				 target	" 2>/dev/null"))
+	 (package-match (regexp "^\\* ([^[:space:]]+)/([^[:space:]]+) "))
+	 (package-lines (grep package-match
+			     (read-pipe-list command)))
+	 (version-match (regexp "([^[:space:]]+)\\]")))
+    (do ((package-lines package-lines (cdr package-lines))
+	 (package-spec-list '()))
+	((null? package-lines) (reverse package-spec-list))
+      (let* ((package-list (string-split (car package-lines)))
+	     (package-name (cadr package-list))
+	     (package-slot (if (eq? #\: (string-ref (caddr package-list) 0))
+			       (caddr package-list)
+			       ""))
+	     (package-version (if (< 0 (string-length package-slot))
+				  (if (string=? "->" (car (cddddr package-list)))
+				      (string-substitute version-match "\\1" (cadr (cddddr package-list)))
+				      (string-substitute version-match "\\1" (car (cddddr package-list))))
+				  (if (string=? "->" (cadddr package-list))
+				      (string-substitute version-match "\\1" (cadr (cdddr package-list)))
+				      (string-substitute version-match "\\1" (car (cdddr package-list))))))
+	     (package-spec (list package-name package-slot package-version)))
+	(set! package-spec-list (cons package-spec package-spec-list))))))
 ;; }}}
 
-;; {{{ paludis-pretend: Does what it says on the box, tbfh.
+;; {{{ (paludis-pretend): Does what it says on the box, tbfh.
 (define (paludis-pretend action-list)
   (do ((action-list action-list (cdr action-list))
-       (pretend-command "paludis -pi1 --dl-deps-default discard --show-reasons summary --show-use-descriptions changed"))
+       (pretend-command "paludis -pi --dl-deps-default discard --show-reasons none --show-use-descriptions changed"))
       ((null? action-list) (system-execute-action pretend-command) (exit))
     (set! pretend-command (string-append pretend-command " " (car action-list)))))
 ;; }}}
