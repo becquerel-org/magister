@@ -16,14 +16,8 @@ exec csi -s $0 "$@"
 (declare (uses utils))
 (declare (uses scheduler))
 (declare (uses posix))
-;; CLI Argument parser
-(declare (uses tool))
 ;; SRFI-1, extended list ops
 (declare (uses srfi-1))
-;; SRFI-11, let-values
-(declare (uses srfi-11))
-;; mkdir/rm etc alikes
-(declare (uses misc-extn-posix))
 ;; }}}
 
 ;;; Global declarations.
@@ -37,10 +31,7 @@ exec csi -s $0 "$@"
 ;;; Interpeter settings.
 ;; {{{ Extensions.
 (use posix)
-(use tool)
 (use srfi-1)
-(use srfi-11)
-(use misc-extn-posix)
 ;; }}}
 
 ;;; Top-level variables.
@@ -51,8 +42,32 @@ exec csi -s $0 "$@"
 ;; The location of the configuration file.
 (define-constant *system-configuration-file* "/etc/properize.conf")
 ;; }}}
-;; Yay global variables, what is this, java???
-(define verbose #t)
+;; {{{ Globals.
+(define options '((pretend #f)
+		  (verbose #f)
+		  (upgrade #f)
+		  (checks "none")
+		  (debug "none")
+		  (toolchain #f)
+		  (system #f)
+		  (everything #f)))
+;; }}}
+
+;;; Option-Alist Setter/Getter
+;; {{{ (get-option): Returns the value of the option from the option alist.
+;; <key> is the key whose value you want to get.
+;; Returns whatever was in the cdr of the key's pair, or #f if it wasn't there.
+(define (get-option key)
+  (car (alist-ref key options)))
+;; }}}
+
+;; {{{ (set-option): Sets the value of the option in the alist to the specified value.
+;; <key> is the key whose value you want to set.
+;; <value> is the value you want to set for that key.
+;; Returns the created alist, but if the <key> was not present the options will not be updated.
+(define (set-option key value)
+  (alist-update! key value options))
+;; }}}
 
 ;;; Display functions
 ;; {{{ Prints version and basic copyright information.
@@ -147,32 +162,33 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
   (with-input-from-pipe command read-lines))
 ;; }}}
 
-;; {{{ (read-variable-from-file): Reads a configuration file, returning the value of variable var.
+;; {{{ (get-configuration): Reads the configuration file, returning the value of variable var.
 ;; <var> must be a string, the name of the variable you want to retrieve.
-;; <file> must be a valid file identifier, either a file object or a string.
 ;; Returns the value of the variable, as a string.
-(define (read-variable-from-file var file)
+(define (get-configuration var)
   (let ((varmatch (regexp (string-append var " = "))))
     (string-substitute varmatch
 		       ""
 		       (car (grep varmatch
-				  (with-input-from-file file read-lines))))))
+				  (with-input-from-file *system-configuration-file* read-lines))))))
 ;; }}}
 
 ;;; Resume-file reading and writing
-;; {{{ (resume-read): Reads the action-list from the resume-file, and returns it.
+;; {{{ (resume-read): Reads the resume-file, sets the options and returns the action list.
 ;; <resume-file> must be a string pointing to a file, or a readable file port.
 ;; Returns a list.
 (define (resume-read resume-file)
-  (with-input-from-file resume-file read))
+  (let ((res-list (with-input-from-file resume-file read)))
+    (set! options (car res-list))
+    (cdr res-list)))
 ;; }}}
 
-;; {{{ (resume-write): Nothing fancy, just dumps the action-list into a file.
+;; {{{ (resume-write): Writes the options and action-list into a file.
 ;; <resume-file> must be a string pointing to a file, or a readable file port.
 ;; <action-list> better be the list you wanna write to the resume-file
 ;; Returns undefined.
 (define (resume-write resume-file action-list)
-  (with-output-to-file resume-file (lambda () (write action-list))))
+  (with-output-to-file resume-file (lambda () (write (cons options action-list)))))
 ;; }}}
 
 ;;; General command handlers
@@ -184,15 +200,48 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; }}}
 
 ;;; Paludis handlers
-;; {{{ (paludis-generate-command): Generates an installation commandline.
+;; {{{ (paludis-generate-fqpn): Generates a package-spec from a (package slot version) list.
+;; <package-list> must be a valid 3-part package-spec list
+;; Returns a string
+(define (paludis-generate-fqpn package-list)
+  (if (get-option 'upgrade)
+      (string-append (first package-list) (second package-list))
+      (string-append (first package-list) (second package-list) "[=" (third package-list) "]")))
+;; }}}
+
+;; {{{ (paludis-generate-installation-command): Generates an installation commandline.
 ;; <package> must be a string.
 ;; Returns a string.
-(define (paludis-generate-command package checks debug)
-  (string-append "paludis -i1 "
-		 "--checks " checks " "
-		 "--dl-deps-default discard "
-		 "--debug-build " debug " "
-		 package))
+(define (paludis-generate-installation-command package-list)
+  (let ((checks (get-option 'checks))
+	(debug (get-option 'debug)))
+    (string-append "paludis -i1 "
+		   "--checks " checks " "
+		   "--dl-deps-default discard "
+		   "--debug-build " debug " "
+		   (paludis-generate-fqpn package-list))))
+;; }}}
+
+;; {{{ (paludis-generate-extraction-command): Generates a package-extraction commandline.
+;; <target> must be a valid package/set as a string.
+;; Returns a string.
+(define (paludis-generate-extraction-command target)
+  (let ((upgrade (get-option 'upgrade))
+	(pre-dependencies (get-option 'pre-dependencies)))
+    (string-append "paludis -pi "
+		   "--show-use-descriptions none "
+		   "--compact "
+		   (if upgrade
+		       "--dl-upgrade always "
+		       "--dl-upgrade as-needed ")
+		   "--dl-new-slots as-needed "
+		   (if (not (or (string=? target "system")
+				(string=? target "everything")))
+		       "--dl-deps-default discard "
+		       (string-append "--dl-installed-deps-pre "
+				      pre-dependencies " "
+				      "--dl-reinstall always "))
+		   target " 2>/dev/null")))
 ;; }}}
 
 ;; {{{ (paludis-extract-packages): Given a target, generates a list of the packages to be installed.
@@ -202,20 +251,8 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; <toolchain> must be a boolean, optional, defaults to #f.
 ;; Returns a list, '() in case the target is invalid - or in case of any other failure along the
 ;; way, tbqh.
-(define (paludis-extract-packages target upgrade pre-dependencies . toolchain)
-  (let* ((command (string-append "paludis -pi "
-				 "--show-use-descriptions none "
-				 "--compact "
-				 (if upgrade
-				     "--dl-upgrade always "
-				     "--dl-upgrade as-needed ")
-				 "--dl-new-slots as-needed "
-				 (if (optional toolchain #f)
-				     "--dl-deps-default discard "
-				     (string-append "--dl-installed-deps-pre "
-						    pre-dependencies " "
-						    "--dl-reinstall always "))
-				 target	" 2>/dev/null"))
+(define (paludis-extract-packages target)
+  (let* ((command (paludis-generate-extraction-command target))
 	 (package-match (regexp "^\\* ([^[:space:]]+)/([^[:space:]]+) "))
 	 (package-lines (grep package-match
 			     (read-pipe-list command)))
@@ -248,14 +285,14 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; }}}
 
 ;;; Action-list execution
-;; {{{ Iterates over the action list, saving it to disk before running it.
+;; {{{ (execute-action-list): Iterates over an action list, saving it to disk before running it.
 (define (execute-action-list action-list resume-file)
   (do ((action-list action-list (cdr action-list)))
       ((null? action-list) (delete-file resume-file))
     (resume-write resume-file action-list)
-    (if (not (system-execute-action (car action-list)))
+    (if (not (system-execute-action (paludis-generate-installation-command (car action-list))))
 	(begin (display "\nHmm, paludis did not exit happy. Fixit & try resuming, k?\n")
-	       (exit)))))
+	       (exit 1)))))
 ;; }}}
 
 ;;; Action-list generation
