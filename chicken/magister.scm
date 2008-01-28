@@ -18,6 +18,8 @@ exec csi -s $0 "$@"
 (declare (uses posix))
 ;; SRFI-1, extended list ops
 (declare (uses srfi-1))
+;; Args, the voluble option parser.
+(declare (uses args)))
 ;; }}}
 
 ;;; Global declarations.
@@ -28,10 +30,11 @@ exec csi -s $0 "$@"
 (declare (usual-integrations))
 ;; }}}
 
-;;; Interpeter settings.
+;;; Interpreter settings.
 ;; {{{ Extensions.
 (use posix)
 (use srfi-1)
+(use args)
 ;; }}}
 
 ;;; Top-level variables.
@@ -43,30 +46,40 @@ exec csi -s $0 "$@"
 (define-constant *system-configuration-file* "/etc/properize.conf")
 ;; }}}
 ;; {{{ Globals.
-(define options '((pretend #f)
-		  (verbose #f)
-		  (upgrade #f)
-		  (checks "none")
-		  (debug "none")
-		  (toolchain #f)
-		  (system #f)
-		  (everything #f)))
+(declare (always-bound options pretend resume-file))
+(define options '((#:verbose . #:no)
+		  (#:toolchain . #:no)
+		  (#:system . #:no)
+		  (#:everything . #:no)
+		  (#:version-lock . #:slot)
+		  (#:pre-deps . "discard")
+		  (#:checks . "none")
+		  (#:debug . "none")))
+(define pretend #f)
+(define resume-file "/var/tmp/magister-resume")
 ;; }}}
 
-;;; Option-Alist Setter/Getter
+;;; Option functions
 ;; {{{ (get-option): Returns the value of the option from the option alist.
 ;; <key> is the key whose value you want to get.
 ;; Returns whatever was in the cdr of the key's pair, or #f if it wasn't there.
 (define (get-option key)
-  (car (alist-ref key options)))
+  (alist-ref key options))
 ;; }}}
 
 ;; {{{ (set-option): Sets the value of the option in the alist to the specified value.
 ;; <key> is the key whose value you want to set.
 ;; <value> is the value you want to set for that key.
 ;; Returns the created alist, but if the <key> was not present the options will not be updated.
-(define (set-option key value)
+(define (set-option! key value)
   (alist-update! key value options))
+;; }}}
+
+;; {{{ (<option>?): predicates for binary options.
+(define (verbose?) (eqv? (get-option #:verbose) #:yes))
+(define (toolchain?) (eqv? (get-option #:toolchain) #:yes))
+(define (system?) (eqv? (get-option #:system) #:yes))
+(define (everything?) (eqv? (get-option #:everything) #:yes))
 ;; }}}
 
 ;;; Display functions
@@ -166,7 +179,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; <var> must be a string, the name of the variable you want to retrieve.
 ;; Returns the value of the variable, as a string.
 (define (get-configuration var)
-  (let ((varmatch (regexp (string-append var " = "))))
+  (let ([varmatch (regexp (string-append var " = "))])
     (string-substitute varmatch
 		       ""
 		       (car (grep varmatch
@@ -175,19 +188,17 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 
 ;;; Resume-file reading and writing
 ;; {{{ (resume-read): Reads the resume-file, sets the options and returns the action list.
-;; <resume-file> must be a string pointing to a file, or a readable file port.
 ;; Returns a list.
-(define (resume-read resume-file)
-  (let ((res-list (with-input-from-file resume-file read)))
+(define (resume-read)
+  (let ([res-list (with-input-from-file resume-file read)])
     (set! options (car res-list))
     (cdr res-list)))
 ;; }}}
 
 ;; {{{ (resume-write): Writes the options and action-list into a file.
-;; <resume-file> must be a string pointing to a file, or a readable file port.
 ;; <action-list> better be the list you wanna write to the resume-file
 ;; Returns undefined.
-(define (resume-write resume-file action-list)
+(define (resume-write action-list)
   (with-output-to-file resume-file (lambda () (write (cons options action-list)))))
 ;; }}}
 
@@ -204,17 +215,18 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; <package-list> must be a valid 3-part package-spec list
 ;; Returns a string
 (define (paludis-generate-fqpn package-list)
-  (if (get-option 'upgrade)
-      (string-append (first package-list) (second package-list))
-      (string-append (first package-list) (second package-list) "[=" (third package-list) "]")))
+  (case (get-option #:version-lock)
+    [(#:none) (first package-list)]
+    [(#:slot) (string-append (first package-list) (second package-list))]
+    [else (string-append (first package-list) (second package-list) "[=" (third package-list) "]")]))
 ;; }}}
 
 ;; {{{ (paludis-generate-installation-command): Generates an installation commandline.
 ;; <package> must be a string.
 ;; Returns a string.
 (define (paludis-generate-installation-command package-list)
-  (let ((checks (get-option 'checks))
-	(debug (get-option 'debug)))
+  (let ([checks (get-option #:checks)]
+	[debug (get-option #:debug)])
     (string-append "paludis -i1 "
 		   "--checks " checks " "
 		   "--dl-deps-default discard "
@@ -226,8 +238,8 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; <target> must be a valid package/set as a string.
 ;; Returns a string.
 (define (paludis-generate-extraction-command target)
-  (let ((upgrade (get-option 'upgrade))
-	(pre-dependencies (get-option 'pre-dependencies)))
+  (let ([upgrade (get-option #:upgrade)]
+	[pre-dependencies (get-option #:pre-dependencies)])
     (string-append "paludis -pi "
 		   "--show-use-descriptions none "
 		   "--compact "
@@ -252,54 +264,56 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; Returns a list, '() in case the target is invalid - or in case of any other failure along the
 ;; way, tbqh.
 (define (paludis-extract-packages target)
-  (let* ((command (paludis-generate-extraction-command target))
-	 (package-match (regexp "^\\* ([^[:space:]]+)/([^[:space:]]+) "))
-	 (package-lines (grep package-match
-			     (read-pipe-list command)))
-	 (version-match (regexp "([^[:space:]]+)\\]")))
-    (do ((package-lines package-lines (cdr package-lines))
-	 (package-spec-list '()))
-	((null? package-lines) (reverse package-spec-list))
-      (let* ((package-list (string-split (car package-lines)))
-	     (package-name (cadr package-list))
-	     (package-slot (if (eq? #\: (string-ref (caddr package-list) 0))
-			       (caddr package-list)
-			       ""))
-	     (package-version (if (< 0 (string-length package-slot))
-				  (if (string=? "->" (car (cddddr package-list)))
-				      (string-substitute version-match "\\1" (cadr (cddddr package-list)))
-				      (string-substitute version-match "\\1" (car (cddddr package-list))))
-				  (if (string=? "->" (cadddr package-list))
-				      (string-substitute version-match "\\1" (cadr (cdddr package-list)))
-				      (string-substitute version-match "\\1" (car (cdddr package-list))))))
-	     (package-spec (list package-name package-slot package-version)))
-	(set! package-spec-list (cons package-spec package-spec-list))))))
+  (let* ([command (paludis-generate-extraction-command target)]
+	 [package-match (regexp "^\\* ([^[:space:]]+)/([^[:space:]]+) ")]
+	 [package-lines (grep package-match
+			     (read-pipe-list command))]
+	 [version-match (regexp "([^[:space:]]+)\\]")]
+	 [atom-explode
+	  (lambda (package-line)
+	    (let* ([package-list (string-split package-line)]
+		   [package-name (second package-list)]
+		   [package-slot (if (eq? #\: (string-ref (third package-list) 0))
+				     (third package-list)
+				     "")]
+		   [package-version (if (< 0 (string-length package-slot))
+					(if (string=? "->" (fifth package-list))
+					    (string-substitute version-match "\\1" (sixth package-list))
+					    (string-substitute version-match "\\1" (fifth package-list)))
+					(if (string=? "->" (fourth package-list))
+					    (string-substitute version-match "\\1" (fifth package-list))
+					    (string-substitute version-match "\\1" (fourth package-list))))])
+	      (list package-name package-slot package-version)))])
+    (map atom-explode package-lines)))
 ;; }}}
 
 ;; {{{ (paludis-pretend): Does what it says on the box, tbfh.
 (define (paludis-pretend action-list)
-  (do ((action-list action-list (cdr action-list))
-       (pretend-command "paludis -pi --dl-deps-default discard --show-reasons none --show-use-descriptions changed"))
-      ((null? action-list) (system-execute-action pretend-command) (exit))
-    (set! pretend-command (string-append pretend-command " " (car action-list)))))
+  (let ([pretend-command "paludis -pi --dl-deps-default discard --show-reasons none --show-use-descriptions changed"]
+	[append-package!
+	 (lambda (package-list)
+	   (set! pretend-command (string-append pretend-command " " (paludis-generate-fqpn package-list))))])
+    (for-each append-package! action-list)
+    (system-execute-action pretend-command)
+    (exit)))
 ;; }}}
 
 ;;; Action-list execution
 ;; {{{ (execute-action-list): Iterates over an action list, saving it to disk before running it.
-(define (execute-action-list action-list resume-file)
+(define (execute-action-list action-list)
   (do ((action-list action-list (cdr action-list)))
       ((null? action-list) (delete-file resume-file))
-    (resume-write resume-file action-list)
-    (if (not (system-execute-action (paludis-generate-installation-command (car action-list))))
-	(begin (display "\nHmm, paludis did not exit happy. Fixit & try resuming, k?\n")
-	       (exit 1)))))
+    (resume-write action-list)
+    (unless (system-execute-action (paludis-generate-installation-command (car action-list)))
+      (print "\nPaludis encountered an error.")
+      (exit 1))))
 ;; }}}
 
 ;;; Action-list generation
-;; {{{ Generates a list of actions and passes it to execute-action-list.
-(define (generate-action-list toolchain system everything pretend
-			      upgrade pre-dependencies checks resume-file)
-  (let ((generate-toolchain-list
+;; {{{ (generate-action-list): Generates a list of actions and passes it to execute-action-list.
+(define (generate-action-list)
+  (let ([]
+	(generate-toolchain-list
 	 (lambda (upgrade)
 	   (let ((toolchain-list '("linux-headers" "glibc" "libtool" "binutils" "mpfr" "gcc" "glibc" "libtool" "binutils" "mpfr" "gcc"))
 		 (libstdc++-needed
@@ -357,9 +371,9 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; <file> must be a string.
 ;; Returns boolean.
 ;; FIXME: Split one for existence, the other for syntax.
-(define (valid-configuration-file? file)
+(define (valid-configuration-file?)
   (if (and (access? file R_OK)
-	   (= 0 (status:exit-val (system (string-append "source " file)))))
+	   (= 0 (status:exit-val (system (string-append "source " *system-configuration-file*)))))
       #t
       #f))
 ;; }}}
@@ -411,7 +425,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; }}}
 
 ;;; Command-line option parser
-;; {{{ (tool-main): Parses commandline using (tool).
+;; {{{ (parse-commandline): Parses commandline using (tool).
 (define (parse-commandline)
   (let* ((option-spec `((help (single-char #\h) (value #f))
 			(version (single-char #\v) (value #f))
