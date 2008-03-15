@@ -16,10 +16,12 @@ exec csi -s $0 "$@"
 (declare (uses utils))
 (declare (uses scheduler))
 (declare (uses posix))
-;; SRFI-1, extended list ops
+;; SRFI-1, extended list ops.
 (declare (uses srfi-1))
+;; Misc useful macros.
+(declare (uses miscmacros))
 ;; Args, the voluble option parser.
-(declare (uses args)))
+(declare (uses args))
 ;; }}}
 
 ;;; Global declarations.
@@ -34,6 +36,7 @@ exec csi -s $0 "$@"
 ;; {{{ Extensions.
 (use posix)
 (use srfi-1)
+(use miscmacros)
 (use args)
 ;; }}}
 
@@ -56,30 +59,30 @@ exec csi -s $0 "$@"
 		  (#:checks . "none")
 		  (#:debug . "none")))
 (define pretend #f)
-(define resume-file "/var/tmp/magister-resume")
+(define state-file "/var/tmp/magister-resume")
 ;; }}}
 
 ;;; Option functions
-;; {{{ (get-option): Returns the value of the option from the option alist.
+;; {{{ (option-get): Returns the value of the option from the option alist.
 ;; <key> is the key whose value you want to get.
 ;; Returns whatever was in the cdr of the key's pair, or #f if it wasn't there.
-(define (get-option key)
+(define (option-get key)
   (alist-ref key options))
 ;; }}}
 
-;; {{{ (set-option): Sets the value of the option in the alist to the specified value.
+;; {{{ (option-set!): Sets the value of the option in the alist to the specified value.
 ;; <key> is the key whose value you want to set.
 ;; <value> is the value you want to set for that key.
 ;; Returns the created alist, but if the <key> was not present the options will not be updated.
-(define (set-option! key value)
+(define (option-set! key value)
   (alist-update! key value options))
 ;; }}}
 
 ;; {{{ (<option>?): predicates for binary options.
-(define (verbose?) (eqv? (get-option #:verbose) #:yes))
-(define (toolchain?) (eqv? (get-option #:toolchain) #:yes))
-(define (system?) (eqv? (get-option #:system) #:yes))
-(define (everything?) (eqv? (get-option #:everything) #:yes))
+(define (verbose?) (eqv? (option-get #:verbose) #:yes))
+(define (toolchain?) (eqv? (option-get #:toolchain) #:yes))
+(define (system?) (eqv? (option-get #:system) #:yes))
+(define (everything?) (eqv? (option-get #:everything) #:yes))
 ;; }}}
 
 ;;; Display functions
@@ -190,7 +193,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; {{{ (resume-read): Reads the resume-file, sets the options and returns the action list.
 ;; Returns a list.
 (define (resume-read)
-  (let ([res-list (with-input-from-file resume-file read)])
+  (let ([res-list (with-input-from-file state-file read)])
     (set! options (car res-list))
     (cdr res-list)))
 ;; }}}
@@ -199,7 +202,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; <action-list> better be the list you wanna write to the resume-file
 ;; Returns undefined.
 (define (resume-write action-list)
-  (with-output-to-file resume-file (lambda () (write (cons options action-list)))))
+  (with-output-to-file state-file (lambda () (write (cons options action-list)))))
 ;; }}}
 
 ;;; General command handlers
@@ -210,36 +213,46 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
   (= 0 (nth-value 2 (process-wait (process-run action)))))
 ;; }}}
 
-;;; Paludis handlers
-;; {{{ (paludis-generate-fqpn): Generates a package-spec from a (package slot version) list.
-;; <package-list> must be a valid 3-part package-spec list
-;; Returns a string
-(define (paludis-generate-fqpn package-list)
-  (case (get-option #:version-lock)
-    [(#:none) (first package-list)]
-    [(#:slot) (string-append (first package-list) (second package-list))]
-    [else (string-append (first package-list) (second package-list) "[=" (third package-list) "]")]))
+;;; General paludis handlers
+;; {{{ (multiple-versions?): predicate for forcing slot info in fqpn generation.
+;; <package-name> is a valid category/name string.
+;; returns a boolean if multiple versions exist.
+(define (multiple-versions? package-name)
+  (< 1 (length (read-pipe-list (string-append "paludis --match " package-name)))))
 ;; }}}
 
-;; {{{ (paludis-generate-installation-command): Generates an installation commandline.
+;; {{{ (generate-fqpn): Generates a package-spec from a (package slot version) list.
+;; <package-list> must be a valid 3-part package-spec list
+;; Returns a string
+(define (generate-fqpn package-list)
+  (let ([version-lock (option-get #:version-lock)])
+    (cond [(or (eq? version-lock #:slot)
+               (multiple-versions? (first package-list)))
+           (string-append (first package-list) (second package-list))]
+          [(eq? version-lock #:none)
+           (first package-list)]
+          [else (string-append (first package-list) (second package-list) "[=" (third package-list) "]")])))
+;; }}}
+
+;; {{{ (generate-installation-command): Generates an installation commandline.
 ;; <package> must be a string.
 ;; Returns a string.
-(define (paludis-generate-installation-command package-list)
-  (let ([checks (get-option #:checks)]
-	[debug (get-option #:debug)])
+(define (generate-installation-command package-list)
+  (let ([checks (option-get #:checks)]
+	[debug (option-get #:debug)])
     (string-append "paludis -i1 "
 		   "--checks " checks " "
 		   "--dl-deps-default discard "
 		   "--debug-build " debug " "
-		   (paludis-generate-fqpn package-list))))
+		   (generate-fqpn package-list))))
 ;; }}}
 
-;; {{{ (paludis-generate-extraction-command): Generates a package-extraction commandline.
+;; {{{ (generate-extraction-command): Generates a package-extraction commandline.
 ;; <target> must be a valid package/set as a string.
 ;; Returns a string.
-(define (paludis-generate-extraction-command target)
-  (let ([upgrade (get-option #:upgrade)]
-	[pre-dependencies (get-option #:pre-dependencies)])
+(define (generate-extraction-command target)
+  (let ([upgrade (option-get #:upgrade)]
+	[pre-dependencies (option-get #:pre-dependencies)])
     (string-append "paludis -pi "
 		   "--show-use-descriptions none "
 		   "--compact "
@@ -256,15 +269,12 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 		   target " 2>/dev/null")))
 ;; }}}
 
-;; {{{ (paludis-extract-packages): Given a target, generates a list of the packages to be installed.
+;; {{{ (extract-packages): Given a target, generates a list of the packages to be installed.
 ;; <target> must be a string. It better be a valid set or pakage.
-;; <upgrade> must be a boolean.
-;; <pre-dependendencies> must be a string value for the paludis option.
-;; <toolchain> must be a boolean, optional, defaults to #f.
 ;; Returns a list, '() in case the target is invalid - or in case of any other failure along the
 ;; way, tbqh.
-(define (paludis-extract-packages target)
-  (let* ([command (paludis-generate-extraction-command target)]
+(define (extract-packages target)
+  (let* ([command (generate-extraction-command target)]
 	 [package-match (regexp "^\\* ([^[:space:]]+)/([^[:space:]]+) ")]
 	 [package-lines (grep package-match
 			     (read-pipe-list command))]
@@ -287,145 +297,188 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
     (map atom-explode package-lines)))
 ;; }}}
 
-;; {{{ (paludis-pretend): Does what it says on the box, tbfh.
+;; {{{ (extract-package): single-package wrapper for (paludis-extract-packages)
+(define (extract-package target)
+  (first (extract-packages target)))
+;; }}}
+
+;; {{{ (pretend-install): Does what it says on the box, tbfh.
 (define (paludis-pretend action-list)
-  (let ([pretend-command "paludis -pi --dl-deps-default discard --show-reasons none --show-use-descriptions changed"]
-	[append-package!
-	 (lambda (package-list)
-	   (set! pretend-command (string-append pretend-command " " (paludis-generate-fqpn package-list))))])
+  (let* ([pretend-command "paludis -pi --dl-deps-default discard --show-reasons none --show-use-descriptions changed"]
+	 [append-package!
+	  (lambda (package-list)
+	    (set! pretend-command (string-append pretend-command " " (generate-fqpn package-list))))])
     (for-each append-package! action-list)
     (system-execute-action pretend-command)
     (exit)))
 ;; }}}
 
+;; {{{ (built-with-use): Checks if a package has been built with a USE flag.
+(define (built-with-use package-list flag)
+  (pair? (grep flag (read-pipe-list (string-append "paludis --environment-variable "
+					  (string-append (first package-list) (second package-list) "[=" (third package-list) "]")
+					  " USE")))))
+;; }}}
+
 ;;; Action-list execution
 ;; {{{ (execute-action-list): Iterates over an action list, saving it to disk before running it.
 (define (execute-action-list action-list)
-  (do ((action-list action-list (cdr action-list)))
+  (do ([action-list action-list (cdr action-list)])
       ((null? action-list) (delete-file resume-file))
     (resume-write action-list)
-    (unless (system-execute-action (paludis-generate-installation-command (car action-list)))
-      (print "\nPaludis encountered an error.")
+    (unless (system-execute-action (generate-installation-command (car action-list)))
+      (print "\nPaludis encountered an error!")
       (exit 1))))
 ;; }}}
 
 ;;; Action-list generation
+;; {{{ (generate-toolchain-list): Creates a list of toolchain packages to be reinstalled.
+;; linux-headers glibc libtool binutils (gmp mpfr) gcc ?libstdc++-v3 ?gcc:3.3
+;; (grep use-flag (read-pipe-line (conc "paludis --environment-variable " package-spec " USE"))
+(define (generate-toolchain-list)
+  (let* ([package-table (make-hash-table)]
+	 [toolchain-list (list (extract-package "linux-headers"))]
+	 [libstdc++?
+	  (system-execute-action "paludis --match sys-libs/libstdc++-v3")]
+	 [gcc-3.3?
+	  (system-execute-action "paludis --match sys-devel/gcc:3.3")]
+	 [mpfr?
+	  (and (string-match ":4\\..*" (second (hash-table-ref package-table "gcc")))
+	       (built-with-use (hash-table-ref package-table "gcc") "fortran"))])
+    (for-each (lambda (package) (hash-table-set! package (extract-package package)))
+	      '("glibc" "libtool" "binutils" "gcc"))
+    (when libstdc++?
+      (hash-table-set! "libstdc++" (extract-package "libstdc++-v3")))
+    (when gcc-3.3?
+      (hash-table-set! "gcc-3.3" (extract-package "sys-devel/gcc:3.3")))
+    (when mpfr?
+      (hash-table-set! "gmp" (extract-package "gmp"))
+      (hash-table-set! "mpfr" (extract-package "mpfr")))
+    (repeat 2
+            (for-each (lambda (package-name)
+                        (set! toolchain-list (append toolchain-list (hash-table-ref package-table package-name))))
+                      '("glibc" "libtool" "binutils"))
+            (when mpfr?
+              (set! toolchain-list (append toolchain-list (hash-table-ref package-table "gmp")))
+              (set! toolchain-list (append toolchain-list (hash-table-ref package-table "mpfr"))))
+            (set! toolchain-list (append toolchain-list (hash-table-ref package-table "gcc"))))
+    (when gcc-3.3?
+      (set! toolchain-list (append toolchain-list (hash-table-ref package-table "gcc-3.3"))))
+    (when libstdc++?
+      (set! toolchain-list (append toolchain-list (hash-table-ref package-table "libstdc++"))))
+    toolchain-list))
+;; }}}
+
 ;; {{{ (generate-action-list): Generates a list of actions and passes it to execute-action-list.
 (define (generate-action-list)
-  (let ([]
-	(generate-toolchain-list
-	 (lambda (upgrade)
-	   (let ((toolchain-list '("linux-headers" "glibc" "libtool" "binutils" "mpfr" "gcc" "glibc" "libtool" "binutils" "mpfr" "gcc"))
-		 (libstdc++-needed
-		  (if (eof-object? (read-pipe-line "ls /var/db/pkg/sys-libs/ | grep libstdc\\+\\+-v3"))
-		      #f #t))
-		 (toolchain-packages '("")))
-	     (if libstdc++-needed (append! toolchain-list '("libstdc++-v3")))
-	     (do ((toolchain-list toolchain-list (cdr toolchain-list)))
-		 ((null? toolchain-list) (cdr toolchain-packages))
-	       (append! toolchain-packages
-			(paludis-extract-packages (car toolchain-list)
-						  upgrade "discard" #t))))))
-	(tc-list '(""))
-	(action-list '(""))
-	(system-list '(""))
-	(everything-list '("")))
+  (let ([action-list '()]
+        [tc-list '()]
+	[system-list '()]
+	[everything-list '()]
+        [list=? (lambda (a b)
+                  (list= string=? a b))])
     (display "\nCollecting Toolchain... ")
-    (set! tc-list (generate-toolchain-list upgrade))
-    (if toolchain (set! action-list (append action-list tc-list)))
-    (display "done\n")
-    (if (or system everything)
-	(begin (display "\nCollecting System... ")
-	       (set! system-list
-		     (lset-difference
-		      string=?
-		      (paludis-extract-packages "system" upgrade pre-dependencies)
-		      tc-list))
-	       (if system (set! action-list (append action-list system-list)))
-	       (display "done\n")))
-    (if everything
-	(begin (display "\nCollecting Everything... ")
-	       (set! everything-list
-		     (lset-difference
-		      string=?
-		      (paludis-extract-packages "everything" upgrade pre-dependencies)
-		      system-list
-		      tc-list))
-	       (set! action-list (append action-list everything-list))
-	       (display "done\n")))
-    (set! action-list (cdr action-list))
-    (if pretend
-	(paludis-pretend action-list))
-    (do ((action-list action-list (cdr action-list))
-	 (finalized-action-list '("")))
-	((null? action-list) (execute-action-list (cdr finalized-action-list)
-						  resume-file))
-      (set! finalized-action-list (append finalized-action-list
-					  (list (paludis-generate-command
-						 (car action-list)
-						 checks)))))))
+    (set! tc-list (generate-toolchain-list))
+    (print "done")
+    (when (or system? everything?)
+	(display "\nCollecting System... ")
+        (set! system-list
+              (lset-difference
+               list=?
+               (extract-packages "system")
+               tc-list))
+        (print "done"))
+    (when everything?
+	(display "\nCollecting Everything... ")
+        (set! everything-list
+              (lset-difference
+               list=?
+               (extract-packages "everything")
+               system-list
+               tc-list))
+        (print "done"))
+    (when toolchain?
+      (set! action-list tc-list))
+    (when system?
+      (set! action-list (append action-list system-list)))
+    (when everything?
+      (set! action-list (append action-list everything-list)))
+    (when pretend
+      (pretend-install action-list))
+    (execute-action-list action-list)))
 ;; }}}
 
 ;;; File validity predicates
-;; {{{ Checks a configuration file for problems.
-;; <file> must be a string.
+;; {{{ (configuration-file-r-ok?): Checks configuration file readability.
 ;; Returns boolean.
-;; FIXME: Split one for existence, the other for syntax.
-(define (valid-configuration-file?)
-  (if (and (access? file R_OK)
-	   (= 0 (status:exit-val (system (string-append "source " *system-configuration-file*)))))
-      #t
-      #f))
+(define (configuration-file-r-ok?)
+  (file-read-access? *system-configuration-file*))
 ;; }}}
 
-;; {{{ Simple check for the state-dir.
+;; {{{ (state-dir-ok?): Checks permissions of the state directory.
+;; <file> is a string pointing to the dir to be checked.
 ;; Returns boolean; true if the dir is +rwx to us, otherwise returns false.
-;; FIXME: does not work with SUID/SGID, implement an exception-catching try-fail
-;; tester.
-(define (valid-resume-directory? dir)
-  (if (access? dir (logior R_OK W_OK X_OK))
-      #t
-      #f))
+(define (state-dir-ok? path)
+  (and (file-read-access? state-dir)
+       (file-write-access? state-dir)
+       (file-execute-access? state-dir)))
 ;; }}}
 
-;; {{{ Simple check for the state-file.
+;; {{{ (state-file-ok?) Checks permissions of the state file (if it exists).
+;; <file> is a string or file descriptor object.
 ;; Returns boolean; true if the file either does not exist, or does and is +rw to us,
 ;; otherwise returns false.
-;; FIXME: seee (valid-resume-directory?)
-(define (valid-resume-file? file)
-  (if (or (not (access? file F_OK))
-	  (access? file (logior W_OK R_OK)))
-      #t
-      #f))
+(define (state-file-ok? file)
+  (or (not (file-exists? state-file))
+      (and (file-read-access? state-file)
+           (file-write-access? state-file))))
+;; }}}
+
+;;; Option validity predicates
+;; {{{ (version-lock-ok?): Checks validity of #:version-lock option.
+;; <+version-lock+> must be a keyword
+;; Returns boolean.
+(define (version-lock-ok? +version-lock+)
+  (or (eq? +version-lock+ #:none)
+      (eq? +version-lock+ #:slot)
+      (eq? +version-lock+ #:version)))
 ;; }}}
 
 ;;; Configuration file parser.
-;; {{{ Reads a configuration file, checking for the validity of the options therein.
-;; <file> must be a string, and better be a valid filename-cum-path too.
-;; Returns the resume-file location.
-(define (read-configuration-file file)
-  (let* ((resume-file (read-$var-from-file "RESUME_FILE" file))
-	 (resume-directory
-	  (match:substring (string-match "^(/.*)(/)(.*)$" resume-file) 1))
-	 (resume-directory-ok (valid-resume-directory? resume-directory))
-	 (resume-file-ok (valid-resume-file? resume-file)))
-    (cond ((and (not resume-directory-ok)
-		(not resume-file-ok))
-	   (begin (display "\nThere's a problem with the resume-file you specified:\n")
-		  (display "Properize needs +rwx permissions to the containing directory, ")
-		  (display "and +rw to the file you named.\n") (exit)))
-	  ((not resume-file-ok)
-	   (begin (display "\nThere's a problem with the resume-file you specified:\n")
-		  (display "Properize needs +rw permissions to the file you named.\n") (exit)))
-	  ((not resume-directory-ok)
-	   (begin (display "\nThere's a problem with the resume-file you specified:\n")
-		  (display "Properize needs +rwx permissions to the containing directory.\n")
-		  (exit))))
-    resume-file))
+;; {{{ (read-configuration-file): Reads the configuration file, checks option validity, and sets the variables.
+;; Returns undefined, if anything is wrong it prints an error message and exits :)
+;; TD: Checking the options that are to be passed to paludis would be nice...
+(define (read-configuration-file)
+  (let* ([+state-file+ (get-configuration "state-file")]
+         [+state-dir+ (pathname-directory +state-file+)]
+         [+version-lock+ (string->keyword (get-configuration "version-lock"))]
+         [+pre-dependencies+ (get-configuration "pre-dependencies")]
+         [+checks+ (get-configuration "checks")]
+         [+debug+ (get-configuration "debug")])
+    (cond [(and (not state-dir-ok? +state-dir+)
+		(not state-file-ok? +state-file+))
+	   (begin (print "\nIncorrect permissions for path: " +state-dir+ "\n"
+                         "                      and file: " +state-file+)
+                  (exit 1))]
+	  [(not (state-file-ok? +state-file+))
+	   (begin (print "\nIncorrect permissions for path: " +state-dir+)
+                  (exit 1))]
+	  [(not (state-dir-ok? +state-dir+))
+	   (begin (print "\nIncorrect permissions for file: " +state-file+)
+		  (exit 1))]
+          [else (set! state-file +state-file+)])
+    (if (version-lock-ok? +version-lock+)
+        (option-set! #:version-lock)
+        (begin (print "\nIn " *system-configuration-file* "\n"
+                      "Unrecognised value for option 'version-lock': " +version-lock+)
+               (exit 1)))
+    (option-set! #:pre-dependencies +pre-dependencies+)
+    (option-set! #:checks +checks+)
+    (option-set! #:debug +debug+)))
 ;; }}}
 
 ;;; Command-line option parser
-;; {{{ (parse-commandline): Parses commandline using (tool).
+;; {{{ (parse-commandline): Parses commandline using (args).
 (define (parse-commandline)
   (let* ((option-spec `((help (single-char #\h) (value #f))
 			(version (single-char #\v) (value #f))
