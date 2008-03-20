@@ -6,30 +6,50 @@ exec csi -s $0 "$@"
 ;;; This program is licensed under the terms of the General Public License version 2.
 ;;; Based on the portage script emwrap.sh, (c) 2004-2007 Hiel Van Campen.
 
-;;; Library declarations.
-;; {{{ Declare all modules used explicitly.
-;; This allows us to use -explicit-use during compilation, resulting in a smaller executable.
-;; Core chicken libraries needed.
-(declare (uses library))
-(declare (uses extras))
-(declare (uses regex))
-(declare (uses utils))
-(declare (uses scheduler))
-(declare (uses posix))
-;; SRFI-1, extended list ops.
-(declare (uses srfi-1))
-;; Misc useful macros.
-(declare (uses miscmacros))
-;; Args, the voluble option parser.
-(declare (uses args))
-;; }}}
-
 ;;; Global declarations.
 ;; {{{ Optimizations.
 ;; Standard functions are not redefined
 (declare (block))
 ;; Let CSC choose versions of internal library functions for speed
-(declare (usual-integrations))
+(declare (usual-integrations)
+         (standard-bindings)
+         (extended-bindings))
+;; Declare top-level variables and functions, to allow skipping
+;; of bound checks
+(declare (always-bound *version*
+                       *system-configuration-file*
+                       options
+                       pretend
+                       resume-file)
+         (bound-to-procedure option-get
+                             option-set!
+                             verbose?
+                             toolchain?
+                             system?
+                             everything?
+                             read-pipe-line
+                             read-pipe-list
+                             get-configuration
+                             resume-read
+                             resume-write
+                             system-execute-action
+                             multiple-versions?
+                             generate-fqpn
+                             generate-installation-command
+                             generate-extraction-command
+                             extract-packages
+                             extract-package
+                             paludis-pretend
+                             built-with-use?
+                             execute-action-list
+                             configuration-file-r-ok
+                             state-dir-ok?
+                             state-file-ok?
+                             version-lock-ok?
+                             read-configuration-file
+                             parse-commandlines
+                             parse-options
+                             check-environment))
 ;; }}}
 
 ;;; Interpreter settings.
@@ -42,14 +62,12 @@ exec csi -s $0 "$@"
 
 ;;; Top-level variables.
 ;; {{{ Constants.
-(declare (always-bound *version* *system-configuration-file*))
 ;; The version of the application, duh.
 (define-constant *version* "0.1.5")
 ;; The location of the configuration file.
 (define-constant *system-configuration-file* "/etc/properize.conf")
 ;; }}}
 ;; {{{ Globals.
-(declare (always-bound options pretend resume-file))
 (define options '((#:verbose . #:no)
 		  (#:toolchain . #:no)
 		  (#:system . #:no)
@@ -313,11 +331,11 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
     (exit)))
 ;; }}}
 
-;; {{{ (built-with-use): Checks if a package has been built with a USE flag.
-(define (built-with-use package-list flag)
+;; {{{ (built-with-use?): Checks if a package has been built with a USE flag.
+(define (built-with-use? package-list flag)
   (pair? (grep flag (read-pipe-list (string-append "paludis --environment-variable "
-					  (string-append (first package-list) (second package-list) "[=" (third package-list) "]")
-					  " USE")))))
+                                                   (first package-list) (second package-list) "[=" (third package-list) "]"
+                                                   " USE")))))
 ;; }}}
 
 ;;; Action-list execution
@@ -344,7 +362,7 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 	  (system-execute-action "paludis --match sys-devel/gcc:3.3")]
 	 [mpfr?
 	  (and (string-match ":4\\..*" (second (hash-table-ref package-table "gcc")))
-	       (built-with-use (hash-table-ref package-table "gcc") "fortran"))])
+	       (built-with-use? (hash-table-ref package-table "gcc") "fortran"))])
     (for-each (lambda (package) (hash-table-set! package (extract-package package)))
 	      '("glibc" "libtool" "binutils" "gcc"))
     (when libstdc++?
