@@ -18,7 +18,8 @@ exec csi -s $0 "$@"
 ;; of bound checks
 (declare (always-bound *version*
                        *system-configuration-file*
-                       options
+                       option-alist
+                       option-spec
                        pretend
                        resume-file)
          (bound-to-procedure option-get
@@ -27,6 +28,8 @@ exec csi -s $0 "$@"
                              toolchain?
                              system?
                              everything?
+                             print-header
+                             print-usage
                              read-pipe-line
                              read-pipe-list
                              get-configuration
@@ -68,16 +71,53 @@ exec csi -s $0 "$@"
 (define-constant *system-configuration-file* "/etc/properize.conf")
 ;; }}}
 ;; {{{ Globals.
-(define options '((#:verbose . #:no)
-		  (#:toolchain . #:no)
-		  (#:system . #:no)
-		  (#:everything . #:no)
-		  (#:version-lock . #:slot)
-		  (#:pre-deps . "discard")
-		  (#:checks . "none")
-		  (#:debug . "none")))
+(define option-alist '((#:verbose . #:no)
+                       (#:toolchain . #:no)
+                       (#:system . #:no)
+                       (#:everything . #:no)
+                       (#:version-lock . #:slot)
+                       (#:pre-deps . "discard")
+                       (#:checks . "none")
+                       (#:debug . "none")))
 (define pretend #f)
 (define state-file "/var/tmp/magister-resume")
+;; }}}
+;; {{{ option-spec: the 'args option list
+(define option-spec (list (args:make-option (p pretend)                 #:none
+                                            "Pretend only: do not reinstall")
+                             (args:make-option (V verbose)              #:none
+                                               "Be verbose about what's going on\n")
+                             (args:make-option (t toolchain)            #:none
+                                               "Reinstall the toolchain")
+                             (args:make-option (s system)               #:none
+                                               "Reinstall the 'system' set
+                                     Toolchain packages are filtered out")
+                             (args:make-option (e everything)           #:none
+                                               "Reinstall the 'everything' set
+                                     Toolchain and 'system' packages are filtered out\n")
+                             (args:make-option (u upgrade)              #:none
+                                               "Pass --dl-upgrade always to paludis while
+                                     generating package lists"
+                             (args:make-option (version-lock)          (#:required "level")
+                                               "How specific to be about the package's version
+                     none            Only use the package category/name
+                     slot            Use slot information where appropriate (default)
+                     version         Use the version number")
+                             (args:make-option (dl-installed-deps-pre) (#:required "option")
+                                               "As per the paludis option")
+                             (args:make-option (checks)                (#:required "when")
+                                               "As per the paludis option, defaults to 'none'")
+                             (args:make-option (debug-build)           (#:required "option")
+                                               "As per the paludis option, defaults to 'none'\n")
+                             (args:make-option (r resume)               #:none
+                                               "Resume an interrupted operation\n\n")
+                             (args:make-option (v version)              #:none
+                                               "Print version and exit"
+                                               (print-header)
+                                               (exit))
+                             (args:make-option (h help)                 #:none
+                                               "Display this text"
+                                               (print-usage))))
 ;; }}}
 
 ;;; Option functions
@@ -85,7 +125,7 @@ exec csi -s $0 "$@"
 ;; <key> is the key whose value you want to get.
 ;; Returns whatever was in the cdr of the key's pair, or #f if it wasn't there.
 (define (option-get key)
-  (alist-ref key options))
+  (alist-ref key option-alist))
 ;; }}}
 
 ;; {{{ (option-set!): Sets the value of the option in the alist to the specified value.
@@ -93,7 +133,7 @@ exec csi -s $0 "$@"
 ;; <value> is the value you want to set for that key.
 ;; Returns the created alist, but if the <key> was not present the options will not be updated.
 (define (option-set! key value)
-  (alist-update! key value options))
+  (alist-update! key value option-alist))
 ;; }}}
 
 ;; {{{ (<option>?): predicates for binary options.
@@ -104,58 +144,28 @@ exec csi -s $0 "$@"
 ;; }}}
 
 ;;; Display functions
-;; {{{ Prints version and basic copyright information.
+;; {{{ (print-header): Prints version and basic copyright information.
 (define (print-header)
-  (begin (display "Properize v")
-	 (display *properize-version*)
-	 (display " (") (display (car (command-line))) (display ")\n")
-	 (display "Copyright (c) 2007 Leonardo Valeri Manera ")
-	 (display "<lvalerimanera>@{NOSPAM}google.com\n")
-	 (display "This program is licensed under the terms of the GPL version 2.\n\n")))
+  (begin (print "Magister v" *version* " (" (car (command-line-arguments)) ")")
+	 (print "Copyright (c) 2007 Leonardo Valeri Manera")
+	 (print "This program is licensed under the terms of the GPL version 2.")
+         (newline)))
 ;; }}}
 
-;; {{{ Prints the good old --help dialogue.
-(define (print-help)
-  (display"\
-Usage:
-Make installation consistent with toolchain:
-     properize [OPTION] [SETS]
-
-Resume an interrupted operation:
-     properize --resume
-       
-
-Option arguments must follow the option immediately, both these forms are valid:
-  --foo=bar
-  --foo bar
-
--General options
-  -v --version           Display version.
-  -h --help              Display this help.
-  -V --verbose           Print information about each step - useful for debugging.
-
--Action options
-  -r --resume            Resume an interrupted operation.
-  -p --pretend           Pretend only.
-  -u --upgrade           Passes --dl-upgrade always to paludis during set
-                         package-list generation.
-     --pre-dependencies=deptype
-                         Passes the supplied value as argument to
-                         --dl-installed-deps-pre to paludis *AS_IS*
-                         during set package-list generation.
-                         Defaults to \"discard\".
-     --checks=runopt     Passes the supplied value as an argument to
-                         --checks to paludis *AS_IS* during build
-                         operations.
-                         Defaults to \"none\".
-
--Package-list generation options
-  -t --toolchain         Rebuild the toolchain.
-  -s --system            Rebuild set:system after the toolchain. Implies toolchain.
-  -e --everything        Rebuild set:everything after the system. Implies system.
-
-This is not a general-operation wrapper script, it is merely intended to help in
-making one's installation consistent after a toolchain or C/CXX/LDFLAG change.
+;; {{{ (print-usage): Prints usage information.
+(define (print-usage)
+  (with-output-to-port (current-output-port)
+    (lambda ()
+      (print "Usage: magister [options ...]")
+      (print "Rebuild all installed packages, or parts thereof.")
+      (newline)
+      (print (parameterize ((args:separator ", ")
+                            (args:indent 2)
+                            (args:width 35))
+               (args:usage option-spec)))
+      (newline)
+      (print "This is not a general-operation wrapper script, it is merely intended to help in
+making one's installation consistent after a toolchain version or *FLAG change.
 It *does not* automagically detect what updates will be done and do it for you.
 It will not work binutils-config or gcc-config for you.
 It is most certainly *NOT* intended to be run *before* the new toolchain package
@@ -171,14 +181,24 @@ compilation and minimize execution time.
 The toolchain is rebuilt in this order. As far as I know this is the \"correct\"
 order, if there is such a thing:
 
-  glibc binutils gcc glibc binutils gcc
+  linux-headers glibc binutils (gmp mpfr) gcc glibc binutils (gmp mpfr) gcc
 
-After that's done, if they're present,
+GMP and MPFR are dependent on the version of gcc detected, and - for versions
+earlier than 4.3 - whether the fortran USE-flag is enabled.
 
-  libtool
+After that's done, if its present,
+
   libstdc++-v3
 
-will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
+will be installed.")
+      (newline)
+      (print "Examples:
+  magister -t                        Rebuild the toolchain.
+  magister -ts --version-lock=none   Rebuild toolchain and system,
+                                     allowing slot upgrades.")
+      (newline)
+      (print "Report bugs to l DOT valerimanera AT gmail DOT com.")))
+  (exit))
 ;; }}}
 
 ;;; Pipe-reading
@@ -497,61 +517,12 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;;; Command-line option parser
 ;; {{{ (parse-commandline): Parses commandline using (args).
 (define (parse-commandline)
-  (let ([option-spec   (list (args:make-option (p pretend)              #:none
-			  "Pretend only: do not reinstall")
-                             (args:make-option (v verbose)              #:none
-			  "Be verbose about what's going on\n")
-                             (args:make-option (t toolchain)            #:none
-			  "Reinstall the toolchain")
-                             (args:make-option (s system)               #:none
-			  "Reinstall the 'system' set
-                                     Toolchain packages are filtered out")
-                             (args:make-option (e everything)           #:none
-			  "Reinstall the 'everything' set
-                                     Toolchain and 'system' packages are filtered out\n")
-                             (args:make-option (version-lock)          (#:required "level")
-			  "How specific to be about the package's version
-                     none            Only use the package category/name
-                     slot            Use slot information where appropriate (default)
-                     version         Use the version number")
-                             (args:make-option (dl-installed-deps-pre) (#:required "option")
-			  "As per the paludis option")
-                             (args:make-option (checks)                (#:required "when")
-			  "As per the paludis option, defaults to 'none'")
-                             (args:make-option (debug-build)           (#:required "option")
-			  "As per the paludis option, defaults to 'none'\n")
-                             (args:make-option (r resume)               #:none
-			  "Resume an aborted reinstallation\n\n")
-                             (args:make-option (V version)              #:none
-			  "Print version and exit"
-			  (print "args-test v0.0.1")
-			  (exit))
-                             (args:make-option (h help)                 #:none
-			  "Display this text"
-			  (usage)))]
-        [usage (lambda ()
-                 (with-output-to-port (current-output-port)
-                   (lambda ()
-                     (print "Usage: magister [options...]")
-                     (print "Rebuild all installed packages, or parts thereof.")
-                     (newline)
-                     (print (parameterize ((args:separator ", ")
-                                           (args:indent 2)
-                                           (args:width 35))
-                              (args:usage options)))
-                     (newline)
-                     (print "Examples:
-  magister -t                        Rebuild the toolchain.
-  magister -ts --version-lock=none   Rebuild toolchain and system,
-                                     doing all possible upgrades.")
-                     (newline)
-                     (print "Report bugs to lvalerimanera at gmail.")))
-                 (exit))])
-    (receive (options operands)
-        (args:parse (command-line-arguments) options)
-      (print "--version-lock -> " (alist-ref 'version-lock options))
-      (print options)
-      (print operands))))
+  (receive (options operands)
+      (args:parse (command-line-arguments) option-spec)
+    (print "--version-lock -> " (alist-ref 'version-lock options))
+    (print options)
+    (print operands)
+    #;(values )))
     
 (define (parse-commandline)
   (let* ((option-spec `((help (single-char #\h) (value #f))
@@ -595,42 +566,42 @@ will be installed. Then system (if you asked for it) will be rebuilt.\n\n"))
 ;; options and initial environment, and initiates action-list generation or resuming
 ;; and action-list execution.
 (define (parse-options configuration-file)
-  (let-values (((resume-file) (read-configuration-file configuration-file))
-		((help-wanted
-		  version-wanted
-		  pretend-wanted
-		  verbose-wanted
-		  upgrade-wanted
-		  pre-dependencies-wanted
-		  checks-wanted
-		  resume-wanted
-		  toolchain-wanted
-		  system-wanted
-		  everything-wanted) (parse-commandline)))
-	       ;; Check for these before anything else.
-	       (if help-wanted
-		   (begin (print-header) (print-help) (exit)))
-	       (if version-wanted
-		   (begin (print-header) (exit)))
-	       (if verbose-wanted (set! verbose #t))
-	       ;; Regardless, we clear the PALUDIS_OPTIONS env var.
-	       (unsetenv "PALUDIS_OPTIONS")
-	       (if resume-wanted
-		   ;; If we got told to resume, read the state file and pass the
-		   ;; action-list to (execute-action-list).
-		   (let ((action-list (resume-read resume-file)))
-		     (display "\nResuming...\n")
-		     (execute-action-list action-list resume-file))
-		   ;; Else, proceed with potion mangling and action-list generation.
-		   (begin (if verbose (display "\nInitializing...\n"))
-			  (generate-action-list toolchain-wanted
-						system-wanted
-						everything-wanted
-						pretend-wanted
-						upgrade-wanted
-						pre-dependencies-wanted
-						checks-wanted
-						resume-file)))))
+  (let-values ([(resume-file) (read-configuration-file configuration-file)]
+               [(help-wanted
+                 version-wanted
+                 pretend-wanted
+                 verbose-wanted
+                 upgrade-wanted
+                 pre-dependencies-wanted
+                 checks-wanted
+                 resume-wanted
+                 toolchain-wanted
+                 system-wanted
+                 everything-wanted) (parse-commandline)])
+    ;; Check for these before anything else.
+    (if help-wanted
+        (begin (print-header) (print-help) (exit)))
+    (if version-wanted
+        (begin (print-header) (exit)))
+    (if verbose-wanted (set! verbose #t))
+    ;; Regardless, we clear the PALUDIS_OPTIONS env var.
+    (unsetenv "PALUDIS_OPTIONS")
+    (if resume-wanted
+        ;; If we got told to resume, read the state file and pass the
+        ;; action-list to (execute-action-list).
+        (let ((action-list (resume-read resume-file)))
+          (display "\nResuming...\n")
+          (execute-action-list action-list resume-file))
+        ;; Else, proceed with potion mangling and action-list generation.
+        (begin (if verbose (display "\nInitializing...\n"))
+               (generate-action-list toolchain-wanted
+                                     system-wanted
+                                     everything-wanted
+                                     pretend-wanted
+                                     upgrade-wanted
+                                     pre-dependencies-wanted
+                                     checks-wanted
+                                     resume-file)))))
 ;; }}}
 
 ;;; The world is burning, run!
