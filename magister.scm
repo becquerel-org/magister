@@ -1,6 +1,6 @@
 #! /bin/sh
 #| -*- mode: Scheme; mode: folding; -*-
-exec csi -s $0 "$@"
+exec csi -ss $0 "$@"
 |#
 ;;; Copyright (c) 2007 Leonardo Valeri Manera <lvalerimanera>@{NOSPAM}<google.com>
 ;;; This program is licensed under the terms of the General Public License version 2.
@@ -21,6 +21,7 @@ exec csi -s $0 "$@"
                        option-alist
                        option-spec
                        pretend
+                       resume
                        resume-file)
          (bound-to-procedure option-get
                              option-set!
@@ -71,15 +72,16 @@ exec csi -s $0 "$@"
 (define-constant *system-configuration-file* "/etc/properize.conf")
 ;; }}}
 ;; {{{ Globals.
-(define option-alist '((#:verbose . #:no)
-                       (#:toolchain . #:no)
-                       (#:system . #:no)
-                       (#:everything . #:no)
+(define option-alist '((#:verbose . #f)
+                       (#:toolchain . #f)
+                       (#:system . #f)
+                       (#:everything . #f)
                        (#:version-lock . #:slot)
                        (#:pre-deps . "discard")
                        (#:checks . "none")
                        (#:debug . "none")))
 (define pretend #f)
+(define resume #f)
 (define state-file "/var/tmp/magister-resume")
 ;; }}}
 ;; {{{ option-spec: the 'args option list
@@ -519,13 +521,13 @@ will be installed.")
 (define (parse-commandline)
   (receive (options operands)
       (args:parse (command-line-arguments) option-spec)
-    (option-set! #:resume (or (string->keyword (alist-ref 'resume options)) #:no))
-    (option-set! #:pretend (or (string->keyword (alist-ref 'pretend options)) #:no))
-    (option-set! #:verbose (or (string->keyword (alist-ref 'verbose options)) #:no))
-    (option-set! #:toolchain (or (string->keyword (alist-ref 'toolchain options)) #:no))
-    (option-set! #:system (or (string->keyword (alist-ref 'system options)) #:no))
-    (option-set! #:everything (or (string->keyword (alist-ref 'everything options)) #:no))
-    (option-set! #:upgrade (or (string->keyword (alist-ref 'upgrade options)) #:no))
+    (set! resume (alist-ref 'resume options)
+    (set! pretend (alist-ref 'pretend options)
+    (option-set! #:verbose (or (alist-ref 'verbose options) #f))
+    (option-set! #:toolchain (or (alist-ref 'toolchain options) #f))
+    (option-set! #:system (or (alist-ref 'system options) #f))
+    (option-set! #:everything (or (alist-ref 'everything options) #f))
+    (option-set! #:upgrade (or (alist-ref 'upgrade options) #f))
     (option-set! #:version-lock (or (string->keyword (alist-ref 'version-lock options)) #:slot))
     (option-set! #:pre-deps (or (alist-ref 'dl-installed-deps-pre options) "discard"))
     (option-set! #:checks (or (alist-ref 'checks options) "none"))
@@ -536,58 +538,35 @@ will be installed.")
 ;; {{{ Controls parsing and validation of file and commandline options, sets global
 ;; options and initial environment, and initiates action-list generation or resuming
 ;; and action-list execution.
-(define (parse-options configuration-file)
-  (let-values ([(resume-file) (read-configuration-file configuration-file)]
-               [(help-wanted
-                 version-wanted
-                 pretend-wanted
-                 verbose-wanted
-                 upgrade-wanted
-                 pre-dependencies-wanted
-                 checks-wanted
-                 resume-wanted
-                 toolchain-wanted
-                 system-wanted
-                 everything-wanted) (parse-commandline)])
-    ;; Check for these before anything else.
-    (if help-wanted
-        (begin (print-header) (print-help) (exit)))
-    (if version-wanted
-        (begin (print-header) (exit)))
-    (if verbose-wanted (set! verbose #t))
-    ;; Regardless, we clear the PALUDIS_OPTIONS env var.
-    (unsetenv "PALUDIS_OPTIONS")
-    (if resume-wanted
-        ;; If we got told to resume, read the state file and pass the
-        ;; action-list to (execute-action-list).
-        (let ((action-list (resume-read resume-file)))
-          (display "\nResuming...\n")
-          (execute-action-list action-list resume-file))
-        ;; Else, proceed with potion mangling and action-list generation.
-        (begin (if verbose (display "\nInitializing...\n"))
-               (generate-action-list toolchain-wanted
-                                     system-wanted
-                                     everything-wanted
-                                     pretend-wanted
-                                     upgrade-wanted
-                                     pre-dependencies-wanted
-                                     checks-wanted
-                                     resume-file)))))
+(define (parse-options)
+  (read-configuration-file)
+  (parse-commandline)
+  ;; clear the PALUDIS_OPTIONS env var.
+  (unsetenv "PALUDIS_OPTIONS")
+  (if resume
+      ;; If we got told to resume, read the state file and pass the
+      ;; action-list to (execute-action-list).
+      (begin (print "\nResuming ...")
+             (execute-action-list (resume-read))
+      ;; Else, proceed with action-list generation.
+      (begin (if verbose (display "\nInitializing...\n"))
+             (generate-action-list))))
 ;; }}}
 
 ;;; The world is burning, run!
 ;; {{{ Validates non-option environment, starts option parsing.
-(define (check-environment)
+(define (main)
   ;; check that the state-dir variable points to a valid location.
-  (if (not (valid-configuration-file? *system-configuration-file*))
-      (begin (display "\nThere is a problem with the configuration file;\n")
-	     (display "Please check your syntax.\n")
-	     (exit)))
+  (when (not (configuration-file-r-ok?))
+    (print "\nCannot read the confugration file.")
+    (exit 1)))
   ;; if called w. no arguments, print help and exit.
-  (if (null? (cdr (command-line)))
-      (begin (print-header) (print-help) (exit))
-      (parse-options *system-configuration-file*)))
+  (if (null? (command-line-arguments))
+      (begin (print-header)
+             (print-help)
+             (exit))
+      (parse-options)))
 ;; }}}
 
 ;;; Program starts on last line *g*
-(check-environment)
+#;(check-environment)
