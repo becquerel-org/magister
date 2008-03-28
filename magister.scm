@@ -519,46 +519,17 @@ will be installed.")
 (define (parse-commandline)
   (receive (options operands)
       (args:parse (command-line-arguments) option-spec)
-    (print "--version-lock -> " (alist-ref 'version-lock options))
-    (print options)
-    (print operands)
-    #;(values )))
-    
-(define (parse-commandline)
-  (let* ((option-spec `((help (single-char #\h) (value #f))
-			(version (single-char #\v) (value #f))
-			(pretend (single-char #\p) (value #f))
-			(verbose (single-char #\V) (value #f))
-			(upgrade (single-char #\u) (value #f))
-			(pre-dependencies (value #t))
-			(checks (value #t))
-			(resume (single-char #\r) (value #f))
-			(toolchain (single-char #\t) (value #f))
-			(system (single-char #\s) (value #f))
-			(everything (single-char #\e) (value #f))))
-	 (options (getopt-long (command-line) option-spec))
-	 (help-wanted (option-ref options 'help #f))
-	 (version-wanted (option-ref options 'version #f))
-	 (pretend-wanted (option-ref options 'pretend #f))
-	 (verbose-wanted (option-ref options 'verbose #f))
-	 (upgrade-wanted (option-ref options 'upgrade #f))
-	 (pre-dependencies-wanted (option-ref options 'pre-dependencies "discard"))
-	 (checks-wanted (option-ref options 'checks "none"))
-	 (resume-wanted (option-ref options 'resume #f))
-	 (toolchain-wanted (option-ref options 'toolchain #t))
-	 (system-wanted (option-ref options 'system #f))
-	 (everything-wanted (option-ref options 'everything #f)))
-    (values help-wanted
-	    version-wanted
-	    pretend-wanted
-	    verbose-wanted
-	    upgrade-wanted
-	    pre-dependencies-wanted
-	    checks-wanted
-	    resume-wanted
-	    toolchain-wanted
-	    system-wanted
-	    everything-wanted)))
+    (option-set! #:resume (or (string->keyword (alist-ref 'resume options)) #:no))
+    (option-set! #:pretend (or (string->keyword (alist-ref 'pretend options)) #:no))
+    (option-set! #:verbose (or (string->keyword (alist-ref 'verbose options)) #:no))
+    (option-set! #:toolchain (or (string->keyword (alist-ref 'toolchain options)) #:no))
+    (option-set! #:system (or (string->keyword (alist-ref 'system options)) #:no))
+    (option-set! #:everything (or (string->keyword (alist-ref 'everything options)) #:no))
+    (option-set! #:upgrade (or (string->keyword (alist-ref 'upgrade options)) #:no))
+    (option-set! #:version-lock (or (string->keyword (alist-ref 'version-lock options)) #:slot))
+    (option-set! #:pre-deps (or (alist-ref 'dl-installed-deps-pre options) "discard"))
+    (option-set! #:checks (or (alist-ref 'checks options) "none"))
+    (option-set! #:debug (or (alist-ref 'debug-build options) "none"))))
 ;; }}}
 
 ;;; Argument parser
