@@ -11,7 +11,7 @@ exec csi -ss $0 "$@"
 ;; Standard functions are not redefined
 (declare (block))
 ;; Units 
-(declare (uses paludis))
+(declare (uses paludis shell))
 ;; Let CSC choose versions of internal library functions for speed
 (declare (usual-integrations)
          (standard-bindings)
@@ -42,6 +42,7 @@ exec csi -ss $0 "$@"
 (use miscmacros)
 (use args)
 (use paludis)
+(use shell)
 ;; }}}
 
 ;;; Top-level variables.
@@ -198,31 +199,6 @@ will be installed.")
   (with-input-from-pipe command read-lines))
 ;; }}}
 
-;; {{{ (get-configuration): Reads the configuration file, returning the value of variable var.
-;; <var> must be a string, the name of the variable you want to retrieve.
-;; Returns the value of the variable, as a string.
-(define (get-configuration var)
-  (let ([varmatch (regexp (string-append var " = "))])
-    (string-substitute varmatch
-		       ""
-		       (car (grep varmatch
-				  (with-input-from-file *system-configuration-file* read-lines))))))
-;; }}}
-
-;;; Resume-file reading and writing
-;; {{{ (resume-read): Reads the resume-file, sets the options and returns the action list.
-;; Returns a list.
-(define (resume-read)
-  (let ([res-list (with-input-from-file state-file read)])
-    (set! options (car res-list))
-    (cdr res-list)))
-;; }}}
-
-;; {{{ (resume-write): Writes the options and action-list into a file.
-;; <action-list> better be the list you wanna write to the resume-file
-;; Returns undefined.
-(define (resume-write action-list)
-  (with-output-to-file state-file (lambda () (write (cons options action-list)))))
 ;; }}}
 
 ;;; General command handlers
