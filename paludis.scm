@@ -1,6 +1,21 @@
 ;;; -*- mode: Scheme; mode: folding; -*-
 
-(unit paludis)
+(declare
+ (unit paludis)
+ (usual-integrations)
+ (standard-bindings)
+ (extended-bindings)
+ (bound-to-precedure multiple-versions?
+                     generate-fqpn
+                     generate-installation-command
+                     generate-extraction-command
+                     extract-packages
+                     extract-package
+                     pretend-install
+                     built-with-use?
+                     execute-action-list))
+
+(use library extras posix utils regex srfi-1)
 
 ;;; General paludis handlers
 ;; {{{ (multiple-versions?): predicate for forcing slot info in fqpn generation.

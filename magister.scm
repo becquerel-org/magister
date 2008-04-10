@@ -1,13 +1,11 @@
 #!/bin/sh
-#| -*- mode: Scheme; mode: folding; -*-
+#| -*- mode: scheme; -*-
 exec csi -ss $0 "$@"
 |#
-;;; Copyright (c) 2007 Leonardo Valeri Manera <lvalerimanera>@{NOSPAM}<google.com>
+;;; Copyright (c) 2007-2008 Leonardo Valeri Manera <l DOT valerimanera AT google DOT com>
 ;;; This program is licensed under the terms of the General Public License version 2.
-;;; Based on the portage script emwrap.sh, (c) 2004-2007 Hiel Van Campen.
 
 ;;; Global declarations.
-;; {{{ Optimizations.
 ;; Standard functions are not redefined
 (declare (block))
 ;; Units 
@@ -23,119 +21,91 @@ exec csi -ss $0 "$@"
                option-spec pretend resume resume-file)
  (bound-to-procedure option-get option-set! verbose? toolchain?
                      system? everything? print-header print-usage
-                     read-pipe-line read-pipe-list get-configuration
-                     resume-read resume-write system-execute-action
-                     multiple-versions? generate-fqpn
-                     generate-installation-command
-                     generate-extraction-command extract-packages
-                     extract-package paludis-pretend built-with-use?
-                     execute-action-list configuration-file-r-ok
+                     resume-read resume-write
+                     configuration-file-r-ok
                      state-dir-ok? state-file-ok? version-lock-ok?
                      read-configuration-file parse-commandlines
                      parse-options check-environment))
-;; }}}
 
 ;;; Interpreter settings.
-;; {{{ Extensions.
-(use posix)
-(use srfi-1)
-(use miscmacros)
+(use library extras posix utils regex srfi-1)
 (use args)
-(use paludis)
-(use shell)
-;; }}}
+(use paludis shell)
 
 ;;; Top-level variables.
-;; {{{ Constants.
-;; The version of the application, duh.
-(define-constant *version* "0.1.5")
-;; The location of the configuration file.
-(define-constant *system-configuration-file* "/etc/properize.conf")
-;; }}}
-;; {{{ Globals.
-(define option-alist '((#:verbose . #f)
-                       (#:toolchain . #f)
-                       (#:system . #f)
-                       (#:everything . #f)
-                       (#:version-lock . #:slot)
-                       (#:pre-deps . "discard")
-                       (#:checks . "none")
-                       (#:debug . "none")))
-(define pretend #f)
-(define resume #f)
-(define state-file "/var/tmp/magister-resume")
-;; }}}
-;; {{{ option-spec: the 'args option list
+(define-record magister:session
+  version config-file pretend resume state-file)
+(define session
+  (make-magister:session "0.1.5" "/etc/properize.conf" #f #f "/var/tmp/magister-resume"))
+(define-record magister:state
+  verbose toolchain system everything version-lock pre-deps checks debug)
+(define-record-printer (magister:state s out)
+  (fprintf out "#,(state verbose: ~S toolchain: ~S system: ~S everything: ~S version-lock: ~S pre-deps: ~S checks: ~S debug: ~S)"
+           (magister:state-verbose s) (magister:state-toolchain s) (magister:state-system s) (magister:state-everything s)
+           (magister:state-version-lock s) (magister:state-pre-deps s) (magister:state-checks s) (magister:state-debug s)))
+(define-reader-ctor 'state make-magister:state)
+(define-record magister:action
+  category package version slot repository)
+(define-record-printer (magister:action a out)
+  (fprintf out "#,(action category: ~S package: ~S version: ~S slot: ~S repository: ~S)"
+           (magister:action-category a) (magister:action-package a) (magister:action-version a) (magister:action-slot a) (magister:action-repository a)))
+(define-reader-ctor 'action make-magister:action)
 (define option-spec (list (args:make-option (p pretend)                 #:none
                                             "Pretend only: do not reinstall")
-                             (args:make-option (V verbose)              #:none
+                          (args:make-option (V verbose)              #:none
                                                "Be verbose about what's going on\n")
-                             (args:make-option (t toolchain)            #:none
+                          (args:make-option (t toolchain)            #:none
                                                "Reinstall the toolchain")
-                             (args:make-option (s system)               #:none
+                          (args:make-option (s system)               #:none
                                                "Reinstall the 'system' set
                                      Toolchain packages are filtered out")
-                             (args:make-option (e everything)           #:none
+                          (args:make-option (e everything)           #:none
                                                "Reinstall the 'everything' set
                                      Toolchain and 'system' packages are filtered out\n")
-                             (args:make-option (u upgrade)              #:none
+                          (args:make-option (u upgrade)              #:none
                                                "Pass --dl-upgrade always to paludis while
-                                     generating package lists"
-                             (args:make-option (version-lock)          (#:required "level")
+                                     generating package lists")
+                          (args:make-option (version-lock)          (#:required "level")
                                                "How specific to be about the package's version
                      none            Only use the package category/name
                      slot            Use slot information where appropriate (default)
                      version         Use the version number")
-                             (args:make-option (dl-installed-deps-pre) (#:required "option")
+                          (args:make-option (dl-installed-deps-pre) (#:required "option")
                                                "As per the paludis option")
-                             (args:make-option (checks)                (#:required "when")
+                          (args:make-option (checks)                (#:required "when")
                                                "As per the paludis option, defaults to 'none'")
-                             (args:make-option (debug-build)           (#:required "option")
+                          (args:make-option (debug-build)           (#:required "option")
                                                "As per the paludis option, defaults to 'none'\n")
-                             (args:make-option (r resume)               #:none
+                          (args:make-option (r resume)               #:none
                                                "Resume an interrupted operation\n\n")
-                             (args:make-option (v version)              #:none
+                          (args:make-option (v version)              #:none
                                                "Print version and exit"
                                                (print-header)
                                                (exit))
-                             (args:make-option (h help)                 #:none
+                          (args:make-option (h help)                 #:none
                                                "Display this text"
                                                (print-usage))))
-;; }}}
 
 ;;; Option functions
-;; {{{ (option-get): Returns the value of the option from the option alist.
-;; <key> is the key whose value you want to get.
-;; Returns whatever was in the cdr of the key's pair, or #f if it wasn't there.
-(define (option-get key)
-  (alist-ref key option-alist))
-;; }}}
-
-;; {{{ (option-set!): Sets the value of the option in the alist to the specified value.
-;; <key> is the key whose value you want to set.
-;; <value> is the value you want to set for that key.
-;; Returns the created alist, but if the <key> was not present the options will not be updated.
-(define (option-set! key value)
-  (alist-update! key value option-alist))
-;; }}}
-
-;; {{{ (<option>?): predicates for binary options.
-(define (verbose?) (eqv? (option-get #:verbose) #:yes))
-(define (toolchain?) (eqv? (option-get #:toolchain) #:yes))
-(define (system?) (eqv? (option-get #:system) #:yes))
-(define (everything?) (eqv? (option-get #:everything) #:yes))
-;; }}}
+;; (<option>?): predicates for binary options.
+(define (verbose? state)
+  (eq? (magister:state-verbose state) #t))
+(define (toolchain? state)
+  (eq? (magister:state-toolchain state) #t))
+(define (system? state)
+  (eq? (magister:state-system state) #t))
+(define (everything? state)
+  (eq? (magister:state-everything state) #t))
 
 ;;; Display functions
-;; {{{ (print-header): Prints version and basic copyright information.
+;; (print-header): Prints version and basic copyright information.
 (define (print-header)
   (begin (print "Magister v" *version* " (" (car (command-line-arguments)) ")")
 	 (print "Copyright (c) 2007 Leonardo Valeri Manera")
 	 (print "This program is licensed under the terms of the GPL version 2.")
          (newline)))
-;; }}}
 
-;; {{{ (print-usage): Prints usage information.
+;; (print-usage): Prints usage information.
 (define (print-usage)
   (with-output-to-port (current-output-port)
     (lambda ()
@@ -182,35 +152,9 @@ will be installed.")
       (newline)
       (print "Report bugs to l DOT valerimanera AT gmail DOT com.")))
   (exit))
-;; }}}
-
-;;; Pipe-reading
-;; {{{ (read-pipe-line): Runs an input pipe and returns the first line of the output.
-;; <command> must be a string and a valid sh command/pipe.
-;; Returns whatever was in the 1st line of pipe's output, as a string.
-(define (read-pipe-line command)
-  (with-input-from-pipe command read-line))
-;; }}}
-
-;; {{{ (read-pipe-list): Runs an input pipe and returns the output.
-;; <command> must be a string and a valid sh command/pipe.
-;; Returns a list of strings, each string being one line of the output.
-(define (read-pipe-list command)
-  (with-input-from-pipe command read-lines))
-;; }}}
-
-;; }}}
-
-;;; General command handlers
-;; {{{ (system-execute-action): Encapsulate the exit value of a process so it can be used as a condition.
-;; <action> must be a string and a valid sh command/pipe.
-;; Returns a boolean.
-(define (system-execute-action action)
-  (= 0 (nth-value 2 (process-wait (process-run action)))))
-;; }}}
 
 ;;; Action-list generation
-;; {{{ (generate-toolchain-list): Creates a list of toolchain packages to be reinstalled.
+;; (generate-toolchain-list): Creates a list of toolchain packages to be reinstalled.
 ;; linux-headers glibc libtool binutils (gmp mpfr) gcc ?libstdc++-v3 ?gcc:3.3
 (define (generate-toolchain-list)
   (let* ([package-table (make-hash-table)]
@@ -244,9 +188,8 @@ will be installed.")
     (when libstdc++?
       (set! toolchain-list (append toolchain-list (hash-table-ref package-table "libstdc++"))))
     toolchain-list))
-;; }}}
 
-;; {{{ (generate-action-list): Generates a list of actions and passes it to execute-action-list.
+;; (generate-action-list): Generates a list of actions and passes it to execute-action-list.
 (define (generate-action-list)
   (let ([action-list '()]
         [tc-list '()]
@@ -283,25 +226,22 @@ will be installed.")
     (when pretend
       (pretend-install action-list))
     (execute-action-list action-list)))
-;; }}}
 
 ;;; File validity predicates
-;; {{{ (configuration-file-r-ok?): Checks configuration file readability.
+;; (configuration-file-r-ok?): Checks configuration file readability.
 ;; Returns boolean.
 (define (configuration-file-r-ok?)
   (file-read-access? *system-configuration-file*))
-;; }}}
 
-;; {{{ (state-dir-ok?): Checks permissions of the state directory.
+;; (state-dir-ok?): Checks permissions of the state directory.
 ;; <file> is a string pointing to the dir to be checked.
 ;; Returns boolean; true if the dir is +rwx to us, otherwise returns false.
 (define (state-dir-ok? path)
   (and (file-read-access? state-dir)
        (file-write-access? state-dir)
        (file-execute-access? state-dir)))
-;; }}}
 
-;; {{{ (state-file-ok?) Checks permissions of the state file (if it exists).
+;; (state-file-ok?) Checks permissions of the state file (if it exists).
 ;; <file> is a string or file descriptor object.
 ;; Returns boolean; true if the file either does not exist, or does and is +rw to us,
 ;; otherwise returns false.
@@ -309,58 +249,57 @@ will be installed.")
   (or (not (file-exists? state-file))
       (and (file-read-access? state-file)
            (file-write-access? state-file))))
-;; }}}
 
 ;;; Option validity predicates
-;; {{{ (version-lock-ok?): Checks validity of #:version-lock option.
+;; (version-lock-ok?): Checks validity of #:version-lock option.
 ;; <+version-lock+> must be a keyword
 ;; Returns boolean.
-(define (version-lock-ok? +version-lock+)
-  (or (eq? +version-lock+ #:none)
-      (eq? +version-lock+ #:slot)
-      (eq? +version-lock+ #:version)))
-;; }}}
+(define (version-lock-ok? version-lock)
+  (or (eq? version-lock 'none)
+      (eq? version-lock 'slot)
+      (eq? version-lock 'version)))
 
 ;;; Configuration file parser.
-;; {{{ (read-configuration-file): Reads the configuration file, checks option validity, and sets the variables.
-;; Returns undefined, if anything is wrong it prints an error message and exits :)
+;; (read-configuration-file): Reads the configuration file, checks option validity, and sets the variables.
+;; <state> must be the state record.
+;; Returns a state record with the configuration, if anything is wrong it prints an error message and exits :)
 ;; TD: Checking the options that are to be passed to paludis would be nice...
-(define (read-configuration-file)
-  (let* ([+state-file+ (get-configuration "state-file")]
-         [+state-dir+ (pathname-directory +state-file+)]
-         [+version-lock+ (string->keyword (get-configuration "version-lock"))]
-         [+pre-dependencies+ (get-configuration "pre-dependencies")]
-         [+checks+ (get-configuration "checks")]
-         [+debug+ (get-configuration "debug")])
-    (cond [(and (not state-dir-ok? +state-dir+)
-		(not state-file-ok? +state-file+))
-	   (begin (print "\nIncorrect permissions for path: " +state-dir+ "\n"
-                         "                      and file: " +state-file+)
+(define (read-configuration-file state)
+  (let* ([state-file   (get-configuration "state-file")]
+         [state-dir    (pathname-directory state-file)]
+         [version-lock (string->symbol (get-configuration "version-lock"))]
+         [pre-deps     (string->symbol (get-configuration "pre-dependencies"))]
+         [checks       (string->symbol (get-configuration "checks"))]
+         [debug        (string->symbol (get-configuration "debug"))])
+    (cond [(and (not state-dir-ok? state-dir)
+		(not state-file-ok? state-file))
+	   (begin (print "\nIncorrect permissions for path: " state-dir "\n"
+                         "                      and file: " state-file)
                   (exit 1))]
-	  [(not (state-file-ok? +state-file+))
-	   (begin (print "\nIncorrect permissions for path: " +state-dir+)
+	  [(not (state-file-ok? state-file))
+	   (begin (print "\nIncorrect permissions for path: " state-dir)
                   (exit 1))]
-	  [(not (state-dir-ok? +state-dir+))
-	   (begin (print "\nIncorrect permissions for file: " +state-file+)
+	  [(not (state-dir-ok? state-dir))
+	   (begin (print "\nIncorrect permissions for file: " state-file)
 		  (exit 1))]
-          [else (set! state-file +state-file+)])
-    (if (version-lock-ok? +version-lock+)
-        (option-set! #:version-lock)
+          [else (magister:session-state-file-set! session state-file)])
+    (if (version-lock-ok? version-lock)
+        (magister:state-version-lock-set! state version-lock)
         (begin (print "\nIn " *system-configuration-file* "\n"
-                      "Unrecognised value for option 'version-lock': " +version-lock+)
+                      "Unrecognised value for option 'version-lock': " version-lock)
                (exit 1)))
-    (option-set! #:pre-dependencies +pre-dependencies+)
-    (option-set! #:checks +checks+)
-    (option-set! #:debug +debug+)))
-;; }}}
+    (magister:state-pre-deps-set! state pre-deps)
+    (magister:state-checks-set! state checks)
+    (magister:state-debug-set! state debug)
+    state))
 
 ;;; Command-line option parser
-;; {{{ (parse-commandline): Parses commandline using (args).
-(define (parse-commandline)
+;; (parse-commandline): Parses commandline using (args).
+(define (parse-commandline state)
   (receive (options operands)
       (args:parse (command-line-arguments) option-spec)
-    (set! resume (alist-ref 'resume options)
-    (set! pretend (alist-ref 'pretend options)
+    (set! resume (alist-ref 'resume options))
+    (set! pretend (alist-ref 'pretend options))
     (option-set! #:verbose (or (alist-ref 'verbose options) #f))
     (option-set! #:toolchain (or (alist-ref 'toolchain options) #f))
     (option-set! #:system (or (alist-ref 'system options) #f))
@@ -370,41 +309,39 @@ will be installed.")
     (option-set! #:pre-deps (or (alist-ref 'dl-installed-deps-pre options) "discard"))
     (option-set! #:checks (or (alist-ref 'checks options) "none"))
     (option-set! #:debug (or (alist-ref 'debug-build options) "none"))))
-;; }}}
 
 ;;; Argument parser
-;; {{{ Controls parsing and validation of file and commandline options, sets global
+;; Controls parsing and validation of file and commandline options, sets global
 ;; options and initial environment, and initiates action-list generation or resuming
-;; and action-list execution.
+; and action-list execution.
 (define (parse-options)
-  (read-configuration-file)
-  (parse-commandline)
-  ;; clear the PALUDIS_OPTIONS env var.
-  (unsetenv "PALUDIS_OPTIONS")
-  (if resume
-      ;; If we got told to resume, read the state file and pass the
-      ;; action-list to (execute-action-list).
-      (begin (print "\nResuming ...")
-             (execute-action-list (resume-read))
-      ;; Else, proceed with action-list generation.
-      (begin (if verbose (display "\nInitializing...\n"))
-             (generate-action-list))))
-;; }}}
+  (let ([state (make-magister:state #f #f #f #f 'slot 'discard 'none 'none)])
+    (set! state (read-configuration-file state))
+    (set! state (parse-commandline state))
+    ;; clear the PALUDIS_OPTIONS env var.
+    (unsetenv "PALUDIS_OPTIONS")
+    (if resume
+        ;; If we got told to resume, read the state file and pass the
+        ;; action-list to (execute-action-list).
+        (begin (print "\nResuming ...")
+               (execute-action-list (resume-read)))
+        ;; Else, proceed with action-list generation.
+        (begin (if verbose (display "\nInitializing...\n"))
+               (generate-action-list)))))
 
 ;;; The world is burning, run!
-;; {{{ Validates non-option environment, starts option parsing.
+;; Validates non-option environment, starts option parsing.
 (define (main)
   ;; check that the state-dir variable points to a valid location.
   (when (not (configuration-file-r-ok?))
     (print "\nCannot read the confugration file.")
-    (exit 1)))
+    (exit 1))
   ;; if called w. no arguments, print help and exit.
   (if (null? (command-line-arguments))
       (begin (print-header)
              (print-help)
              (exit))
       (parse-options)))
-;; }}}
 
 ;;; Program starts on last line *g*
 #;(check-environment)
