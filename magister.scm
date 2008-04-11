@@ -30,7 +30,7 @@ exec csi -ss $0 "$@"
 (define-record session
   version config-file pretend resume state-file)
 (define session
-  (make-session "0.1.5" "/etc/properize.conf" #f #f "/var/tmp/magister-resume"))
+  (make-session "0.2.0" "/etc/properize.conf" #f #f "/var/tmp/magister-resume"))
 (define-record state
   verbose toolchain system everything version-lock pre-deps checks debug)
 (define-record-printer (state s out)
@@ -44,7 +44,7 @@ exec csi -ss $0 "$@"
   (fprintf out "#,(package ~S ~S ~S ~S ~S)"
            (package-category a) (package-name a) (package-version a) (package-slot a) (package-repository a)))
 (define-reader-ctor 'package make-package)
-(define option-spec (list (args:make-option (p pretend)                 #:none
+(define option-spec (list (args:make-option (p pretend)              #:none
                                             "Pretend only: do not reinstall")
                           (args:make-option (V verbose)              #:none
                                                "Be verbose about what's going on\n")
@@ -98,8 +98,8 @@ exec csi -ss $0 "$@"
 ;;; Display functions
 ;; (print-header): Prints version and basic copyright information.
 (define (print-header)
-  (begin (print "Magister v" *version* " (" (car (command-line-arguments)) ")")
-	 (print "Copyright (c) 2007 Leonardo Valeri Manera")
+  (begin (print "Magister v" (session-version session))
+	 (print "Copyright (c) 2007-2008 Leonardo Valeri Manera")
 	 (print "This program is licensed under the terms of the GPL version 2.")
          (newline)))
 
