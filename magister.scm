@@ -337,6 +337,3 @@ will be installed.")
              (print-help)
              (exit))
       (parse-options)))
-
-;;; Program starts on last line *g*
-#;(check-environment)
