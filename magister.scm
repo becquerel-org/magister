@@ -310,19 +310,19 @@ will be installed.")
 ;; options and initial environment, and initiates action-list generation or resuming
 ; and action-list execution.
 (define (parse-options)
-  (let ([state (make-magister:state #f #f #f #f 'slot 'discard 'none 'none)])
+  (let ([state (make-state #f #f #f #f 'slot "discard" "none" "none")])
     (set! state (read-configuration-file state))
     (set! state (parse-commandline state))
     ;; clear the PALUDIS_OPTIONS env var.
     (unsetenv "PALUDIS_OPTIONS")
-    (if resume
+    (if (resume?)
         ;; If we got told to resume, read the state file and pass the
         ;; action-list to (execute-action-list).
         (begin (print "\nResuming ...")
-               (execute-action-list (resume-read)))
+               (execute-action-list state (resume-read)))
         ;; Else, proceed with action-list generation.
-        (begin (if verbose (display "\nInitializing...\n"))
-               (generate-action-list)))))
+        (begin (if (verbose?) (print "\nInitializing..."))
+               (generate-action-list state)))))
 
 ;;; The world is burning, run!
 ;; Validates non-option environment, starts option parsing.
