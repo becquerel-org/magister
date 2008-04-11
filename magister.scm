@@ -87,13 +87,13 @@ exec csi -ss $0 "$@"
 ;;; Option functions
 ;; (<option>?): predicates for binary options.
 (define (verbose? state)
-  (eq? (magister:state-verbose state) #t))
+  (magister:state-verbose state))
 (define (toolchain? state)
-  (eq? (magister:state-toolchain state) #t))
+  (magister:state-toolchain state))
 (define (system? state)
-  (eq? (magister:state-system state) #t))
+  (magister:state-system state))
 (define (everything? state)
-  (eq? (magister:state-everything state) #t))
+  (magister:state-everything state))
 
 ;;; Display functions
 ;; (print-header): Prints version and basic copyright information.
