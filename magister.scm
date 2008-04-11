@@ -231,18 +231,18 @@ will be installed.")
 ;; <file> is a string pointing to the dir to be checked.
 ;; Returns boolean; true if the dir is +rwx to us, otherwise returns false.
 (define (state-dir-ok? path)
-  (and (file-read-access? state-dir)
-       (file-write-access? state-dir)
-       (file-execute-access? state-dir)))
+  (and (file-read-access? path)
+       (file-write-access? path)
+       (file-execute-access? path)))
 
 ;; (state-file-ok?) Checks permissions of the state file (if it exists).
 ;; <file> is a string or file descriptor object.
 ;; Returns boolean; true if the file either does not exist, or does and is +rw to us,
 ;; otherwise returns false.
 (define (state-file-ok? file)
-  (or (not (file-exists? state-file))
-      (and (file-read-access? state-file)
-           (file-write-access? state-file))))
+  (or (not (file-exists? file))
+      (and (file-read-access? file)
+           (file-write-access? file))))
 
 ;;; Option validity predicates
 ;; (version-lock-ok?): Checks validity of #:version-lock option.
