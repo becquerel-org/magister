@@ -39,7 +39,7 @@ exec csi -ss $0 "$@"
            (state-version-lock s) (state-pre-deps s)  (state-checks s) (state-debug s)))
 (define-reader-ctor 'state make-state)
 (define-record package
-  category package version slot repository)
+  category name version slot repository)
 (define-record-printer (package a out)
   (fprintf out "#,(package ~S ~S ~S ~S ~S)"
            (package-category a) (package-name a) (package-version a) (package-slot a) (package-repository a)))
