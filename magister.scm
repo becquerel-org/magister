@@ -329,7 +329,7 @@ will be installed.")
 (define (main)
   ;; check that the state-dir variable points to a valid location.
   (unless (configuration-file-r-ok?)
-    (print "\nCannot read the confugration file.")
+    (print "\nCannot read the configuration file.")
     (exit 1))
   ;; if called w. no arguments, print help and exit.
   (if (null? (command-line-arguments))
