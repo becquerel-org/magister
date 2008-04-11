@@ -276,15 +276,15 @@ will be installed.")
 	  [(not (state-dir-ok? state-dir))
 	   (begin (print "\nIncorrect permissions for file: " state-file)
 		  (exit 1))]
-          [else (magister:session-state-file-set! session state-file)])
+          [else (session-state-file-set! session state-file)])
     (if (version-lock-ok? version-lock)
-        (magister:state-version-lock-set! state version-lock)
+        (state-version-lock-set! state version-lock)
         (begin (print "\nIn " *system-configuration-file* "\n"
                       "Unrecognised value for option 'version-lock': " version-lock)
                (exit 1)))
-    (magister:state-pre-deps-set! state pre-deps)
-    (magister:state-checks-set! state checks)
-    (magister:state-debug-set! state debug)
+    (state-pre-deps-set! state pre-deps)
+    (state-checks-set! state checks)
+    (state-debug-set! state debug)
     state))
 
 ;;; Command-line option parser
