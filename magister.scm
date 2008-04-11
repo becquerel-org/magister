@@ -15,7 +15,7 @@ exec csi -ss $0 "$@"
 ;; Declare top-level variables and functions, to allow skipping
 ;; of bound checks
 (declare
- (always-bound option-spec)
+ (always-bound session option-spec)
  (bound-to-procedure verbose? toolchain? system? everything?
                      print-header print-usage resume-read resume-write
                      configuration-file-r-ok state-dir-ok? state-file-ok? version-lock-ok?
@@ -23,27 +23,27 @@ exec csi -ss $0 "$@"
                      parse-options check-environment))
 
 ;;; Interpreter settings.
-(use library extras posix utils regex srfi-1)
+(use library extras posix utils regex srfi-1 srfi-13 srfi-69)
 (use args)
 
 ;;; Top-level variables.
-(define-record magister:session
+(define-record session
   version config-file pretend resume state-file)
 (define session
-  (make-magister:session "0.1.5" "/etc/properize.conf" #f #f "/var/tmp/magister-resume"))
-(define-record magister:state
+  (make-session "0.1.5" "/etc/properize.conf" #f #f "/var/tmp/magister-resume"))
+(define-record state
   verbose toolchain system everything version-lock pre-deps checks debug)
-(define-record-printer (magister:state s out)
+(define-record-printer (state s out)
   (fprintf out "#,(state verbose: ~S toolchain: ~S system: ~S everything: ~S version-lock: ~S pre-deps: ~S checks: ~S debug: ~S)"
-           (magister:state-verbose s) (magister:state-toolchain s) (magister:state-system s) (magister:state-everything s)
-           (magister:state-version-lock s) (magister:state-pre-deps s) (magister:state-checks s) (magister:state-debug s)))
-(define-reader-ctor 'state make-magister:state)
-(define-record magister:package
+           (state-verbose s)      (state-toolchain s) (state-system s) (state-everything s)
+           (state-version-lock s) (state-pre-deps s)  (state-checks s) (state-debug s)))
+(define-reader-ctor 'state make-state)
+(define-record package
   category package version slot repository)
-(define-record-printer (magister:package a out)
-  (fprintf out "#,(package category: ~S package: ~S version: ~S slot: ~S repository: ~S)"
-           (magister:package-category a) (magister:package-package a) (magister:package-version a) (magister:package-slot a) (magister:package-repository a)))
-(define-reader-ctor 'package make-magister:package)
+(define-record-printer (package a out)
+  (fprintf out "#,(package ~S ~S ~S ~S ~S)"
+           (package-category a) (package-name a) (package-version a) (package-slot a) (package-repository a)))
+(define-reader-ctor 'package make-package)
 (define option-spec (list (args:make-option (p pretend)                 #:none
                                             "Pretend only: do not reinstall")
                           (args:make-option (V verbose)              #:none
@@ -87,13 +87,13 @@ exec csi -ss $0 "$@"
 ;;; Option functions
 ;; (<option>?): predicates for binary options.
 (define (verbose? state)
-  (magister:state-verbose state))
+  (state-verbose state))
 (define (toolchain? state)
-  (magister:state-toolchain state))
+  (state-toolchain state))
 (define (system? state)
-  (magister:state-system state))
+  (state-system state))
 (define (everything? state)
-  (magister:state-everything state))
+  (state-everything state))
 
 ;;; Display functions
 ;; (print-header): Prints version and basic copyright information.
@@ -162,8 +162,8 @@ will be installed.")
 	 [gcc-3.3?
 	  (system-execute-action "paludis --match sys-devel/gcc:3.3")]
 	 [mpfr?
-          (or (>= 4.3 (string->number (string-drop 1 (magister:package-slot (hash-table-ref package-table "gcc")))))
-              (and (string-match ":4\\..*" (magister:package-slot (hash-table-ref package-table "gcc")))
+          (or (>= 4.3 (string->number (string-drop 1 (package-slot (hash-table-ref package-table "gcc")))))
+              (and (string-match ":4\\..*" (package-slot (hash-table-ref package-table "gcc")))
                    (built-with-use? (hash-table-ref package-table "gcc") "fortran")))])
     (for-each (lambda (package) (hash-table-set! package (extract-package package)))
 	      '("glibc" "libtool" "binutils" "gcc"))
