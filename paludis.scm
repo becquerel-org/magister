@@ -25,35 +25,35 @@
   (< 1 (length (read-pipe-list (string-append "paludis --match " package-name)))))
 
 ;; (generate-fqpn): Generates a package-spec from a (package slot version) list.
-;; <package-list> must be a valid 3-part package-spec list
+;; <package> must be a package record
 ;; Returns a string
-(define (generate-fqpn package-list)
-  (let ([version-lock (option-get #:version-lock)])
-    (cond [(or (eq? version-lock #:slot)
-               (multiple-versions? (first package-list)))
-           (string-append (first package-list) (second package-list))]
-          [(eq? version-lock #:none)
-           (first package-list)]
-          [else (string-append (first package-list) (second package-list) "[=" (third package-list) "]")])))
+(define (generate-fqpn state package)
+  (let ([version-lock (state-version-lock state)])
+    (cond [(or (eq? version-lock 'slot)
+               (multiple-versions? (package-name package)))
+           (string-append (package-category package) "/" (package-name package) (package-slot package))]
+          [(eq? version-lock 'none)
+           (string-append (package-category package) "/" (package-name package))]
+          [else (string-append (package-category package) "/" (package-name package) "[=" (package-version package) "]")])))
 
 ;; (generate-installation-command): Generates an installation commandline.
 ;; <package> must be a string.
 ;; Returns a string.
-(define (generate-installation-command package-list)
-  (let ([checks (option-get #:checks)]
-	[debug (option-get #:debug)])
+(define (generate-installation-command state package)
+  (let ([checks (state-checks state)]
+	[debug (state-debug state)])
     (string-append "paludis -i1 "
 		   "--checks " checks " "
 		   "--dl-deps-default discard "
 		   "--debug-build " debug " "
-		   (generate-fqpn package-list))))
+		   (generate-fqpn state package))))
 
 ;; (generate-extraction-command): Generates a package-extraction commandline.
 ;; <target> must be a valid package/set as a string.
 ;; Returns a string.
-(define (generate-extraction-command target)
-  (let ([upgrade (option-get #:upgrade)]
-	[pre-dependencies (option-get #:pre-dependencies)])
+(define (generate-extraction-command state target)
+  (let ([upgrade (state-upgrade state)]
+	[pre-dependencies (state-pre-deps state)])
     (string-append "paludis -pi "
 		   "--show-use-descriptions none "
 		   "--compact "
@@ -73,16 +73,17 @@
 ;; <target> must be a string. It better be a valid set or pakage.
 ;; Returns a list, '() in case the target is invalid - or in case of any other failure along the
 ;; way, tbqh.
-(define (extract-packages target)
-  (let* ([command (generate-extraction-command target)]
+(define (extract-packages state target)
+  (let* ([command (generate-extraction-command state target)]
 	 [package-match (regexp "^\\* ([^[:space:]]+)/([^[:space:]]+) ")]
-	 [package-lines (grep package-match
-			     (read-pipe-list command))]
+         [package-splitter (regexp "^([^:/]*)/([^:/]*)($|::.*$)")]
 	 [version-match (regexp "([^[:space:]]+)\\]")]
 	 [atom-explode
 	  (lambda (package-line)
 	    (let* ([package-list (string-split package-line)]
-		   [package-name (second package-list)]
+                   [package-category (string-substitute package-splitter "\\1" (second package-list))]
+		   [package-name (string-substitute package-splitter "\\2" (second package-list))]
+		   [package-repository (string-substitute package-splitter "\\3" (second package-list))]
 		   [package-slot (if (eq? #\: (string-ref (third package-list) 0))
 				     (third package-list)
 				     "")]
@@ -93,19 +94,24 @@
 					(if (string=? "->" (fourth package-list))
 					    (string-substitute version-match "\\1" (fifth package-list))
 					    (string-substitute version-match "\\1" (fourth package-list))))])
-	      (list package-name package-slot package-version)))])
-    (map atom-explode package-lines)))
+	      (make-package package-category package-name package-version package-slot package-repository)))])
+    (regexp-optimize package-match)
+    (regexp-optimize package-splitter)
+    (regexp-optimize version-match)
+    (map atom-explode
+         (grep package-match
+               (read-pipe-list command)))))
 
 ;; (extract-package): single-package wrapper for (paludis-extract-packages)
-(define (extract-package target)
-  (first (extract-packages target)))
+(define (extract-package state target)
+  (first (extract-packages state target)))
 
 ;; (pretend-install): Does what it says on the box, tbfh.
-(define (paludis-pretend action-list)
+(define (paludis-pretend state action-list)
   (let* ([pretend-command "paludis -pi --dl-deps-default discard --show-reasons none --show-use-descriptions changed"]
 	 [append-package!
 	  (lambda (package-list)
-	    (set! pretend-command (string-append pretend-command " " (generate-fqpn package-list))))])
+	    (set! pretend-command (string-append pretend-command " " (generate-fqpn state package-list))))])
     (for-each append-package! action-list)
     (system-execute-action pretend-command)
     (exit)))
@@ -118,10 +124,10 @@
 
 ;;; Action-list execution
 ;; (execute-action-list): Iterates over an action list, saving it to disk before running it.
-(define (execute-action-list action-list)
+(define (execute-action-list state action-list)
   (do ([action-list action-list (cdr action-list)])
       ((null? action-list) (delete-file resume-file))
     (resume-write action-list)
-    (unless (system-execute-action (generate-installation-command (car action-list)))
+    (unless (system-execute-action (generate-installation-command state (car action-list)))
       (print "\nPaludis encountered an error!")
       (exit 1))))
