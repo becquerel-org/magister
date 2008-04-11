@@ -94,6 +94,10 @@ exec csi -ss $0 "$@"
   (state-system state))
 (define (everything? state)
   (state-everything state))
+(define (pretend?)
+  (session-pretend session))
+(define (resume?)
+  (session-resume session))
 
 ;;; Display functions
 ;; (print-header): Prints version and basic copyright information.
@@ -221,7 +225,7 @@ will be installed.")
 ;; (configuration-file-r-ok?): Checks configuration file readability.
 ;; Returns boolean.
 (define (configuration-file-r-ok?)
-  (file-read-access? *system-configuration-file*))
+  (file-read-access? (session-config-file session)))
 
 ;; (state-dir-ok?): Checks permissions of the state directory.
 ;; <file> is a string pointing to the dir to be checked.
