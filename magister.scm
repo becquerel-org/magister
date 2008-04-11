@@ -8,8 +8,6 @@ exec csi -ss $0 "$@"
 ;;; Global declarations.
 ;; Standard functions are not redefined
 (declare (block))
-;; Units 
-(declare (uses paludis shell))
 ;; Let CSC choose versions of internal library functions for speed
 (declare (usual-integrations)
          (standard-bindings)
@@ -17,20 +15,16 @@ exec csi -ss $0 "$@"
 ;; Declare top-level variables and functions, to allow skipping
 ;; of bound checks
 (declare
- (always-bound *version* *system-configuration-file* option-alist
-               option-spec pretend resume resume-file)
- (bound-to-procedure option-get option-set! verbose? toolchain?
-                     system? everything? print-header print-usage
-                     resume-read resume-write
-                     configuration-file-r-ok
-                     state-dir-ok? state-file-ok? version-lock-ok?
-                     read-configuration-file parse-commandlines
+ (always-bound option-spec)
+ (bound-to-procedure verbose? toolchain? system? everything?
+                     print-header print-usage resume-read resume-write
+                     configuration-file-r-ok state-dir-ok? state-file-ok? version-lock-ok?
+                     read-configuration-file parse-commandline
                      parse-options check-environment))
 
 ;;; Interpreter settings.
 (use library extras posix utils regex srfi-1)
 (use args)
-(use paludis shell)
 
 ;;; Top-level variables.
 (define-record magister:session
@@ -85,6 +79,10 @@ exec csi -ss $0 "$@"
                           (args:make-option (h help)                 #:none
                                                "Display this text"
                                                (print-usage))))
+
+;;; Units
+(declare (uses paludis shell))
+(use paludis shell)
 
 ;;; Option functions
 ;; (<option>?): predicates for binary options.
