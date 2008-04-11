@@ -299,7 +299,7 @@ will be installed.")
     (state-system-set!       state (alist-ref 'system options))
     (state-everything-set!   state (alist-ref 'everything options))
     (state-upgrade-set!      state (alist-ref 'upgrade options))
-    (state-version-lock-set! state (or (string->symbol (alist-ref 'version-lock options)) 'slot))
+    (state-version-lock-set! state (string->symbol (or (alist-ref 'version-lock options) "slot")))
     (state-pre-deps-set!     state (or (alist-ref 'dl-installed-deps-pre options) "discard"))
     (state-checks-set!       state (or (alist-ref 'checks options) "none"))
     (state-debug-set!        state (or (alist-ref 'debug-build options) "none"))
@@ -328,7 +328,7 @@ will be installed.")
 ;; Validates non-option environment, starts option parsing.
 (define (main)
   ;; check that the state-dir variable points to a valid location.
-  (when (not (configuration-file-r-ok?))
+  (unless (configuration-file-r-ok?)
     (print "\nCannot read the confugration file.")
     (exit 1))
   ;; if called w. no arguments, print help and exit.
