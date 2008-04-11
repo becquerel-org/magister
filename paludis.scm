@@ -117,16 +117,16 @@
     (exit)))
 
 ;; (built-with-use?): Checks if a package has been built with a USE flag.
-(define (built-with-use? package-list flag)
+(define (built-with-use? package flag)
   (pair? (grep flag (read-pipe-list (string-append "paludis --environment-variable "
-                                                   (first package-list) (second package-list) "[=" (third package-list) "]"
+                                                   (package-category package) "/" (package-name package) (package-slot package) "[=" (package-version package) "]"
                                                    " USE")))))
 
 ;;; Action-list execution
 ;; (execute-action-list): Iterates over an action list, saving it to disk before running it.
 (define (execute-action-list state action-list)
   (do ([action-list action-list (cdr action-list)])
-      ((null? action-list) (delete-file resume-file))
+      ((null? action-list) (delete-file (session-state-file session)))
     (resume-write action-list)
     (unless (system-execute-action (generate-installation-command state (car action-list)))
       (print "\nPaludis encountered an error!")
