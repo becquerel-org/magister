@@ -1,4 +1,4 @@
-;;; -*- mode: Scheme; mode: folding; -*-
+;;; -*- mode: Scheme; -*-
 
 (declare
  (unit paludis)
@@ -18,14 +18,13 @@
 (use library extras posix utils regex srfi-1)
 
 ;;; General paludis handlers
-;; {{{ (multiple-versions?): predicate for forcing slot info in fqpn generation.
+;; (multiple-versions?): predicate for forcing slot info in fqpn generation.
 ;; <package-name> is a valid category/name string.
 ;; returns a boolean if multiple versions exist.
 (define (multiple-versions? package-name)
   (< 1 (length (read-pipe-list (string-append "paludis --match " package-name)))))
-;; }}}
 
-;; {{{ (generate-fqpn): Generates a package-spec from a (package slot version) list.
+;; (generate-fqpn): Generates a package-spec from a (package slot version) list.
 ;; <package-list> must be a valid 3-part package-spec list
 ;; Returns a string
 (define (generate-fqpn package-list)
@@ -36,9 +35,8 @@
           [(eq? version-lock #:none)
            (first package-list)]
           [else (string-append (first package-list) (second package-list) "[=" (third package-list) "]")])))
-;; }}}
 
-;; {{{ (generate-installation-command): Generates an installation commandline.
+;; (generate-installation-command): Generates an installation commandline.
 ;; <package> must be a string.
 ;; Returns a string.
 (define (generate-installation-command package-list)
@@ -49,9 +47,8 @@
 		   "--dl-deps-default discard "
 		   "--debug-build " debug " "
 		   (generate-fqpn package-list))))
-;; }}}
 
-;; {{{ (generate-extraction-command): Generates a package-extraction commandline.
+;; (generate-extraction-command): Generates a package-extraction commandline.
 ;; <target> must be a valid package/set as a string.
 ;; Returns a string.
 (define (generate-extraction-command target)
@@ -71,9 +68,8 @@
 				      pre-dependencies " "
 				      "--dl-reinstall always "))
 		   target " 2>/dev/null")))
-;; }}}
 
-;; {{{ (extract-packages): Given a target, generates a list of the packages to be installed.
+;; (extract-packages): Given a target, generates a list of the packages to be installed.
 ;; <target> must be a string. It better be a valid set or pakage.
 ;; Returns a list, '() in case the target is invalid - or in case of any other failure along the
 ;; way, tbqh.
@@ -99,14 +95,12 @@
 					    (string-substitute version-match "\\1" (fourth package-list))))])
 	      (list package-name package-slot package-version)))])
     (map atom-explode package-lines)))
-;; }}}
 
-;; {{{ (extract-package): single-package wrapper for (paludis-extract-packages)
+;; (extract-package): single-package wrapper for (paludis-extract-packages)
 (define (extract-package target)
   (first (extract-packages target)))
-;; }}}
 
-;; {{{ (pretend-install): Does what it says on the box, tbfh.
+;; (pretend-install): Does what it says on the box, tbfh.
 (define (paludis-pretend action-list)
   (let* ([pretend-command "paludis -pi --dl-deps-default discard --show-reasons none --show-use-descriptions changed"]
 	 [append-package!
@@ -115,17 +109,15 @@
     (for-each append-package! action-list)
     (system-execute-action pretend-command)
     (exit)))
-;; }}}
 
-;; {{{ (built-with-use?): Checks if a package has been built with a USE flag.
+;; (built-with-use?): Checks if a package has been built with a USE flag.
 (define (built-with-use? package-list flag)
   (pair? (grep flag (read-pipe-list (string-append "paludis --environment-variable "
                                                    (first package-list) (second package-list) "[=" (third package-list) "]"
                                                    " USE")))))
-;; }}}
 
 ;;; Action-list execution
-;; {{{ (execute-action-list): Iterates over an action list, saving it to disk before running it.
+;; (execute-action-list): Iterates over an action list, saving it to disk before running it.
 (define (execute-action-list action-list)
   (do ([action-list action-list (cdr action-list)])
       ((null? action-list) (delete-file resume-file))
@@ -133,4 +125,3 @@
     (unless (system-execute-action (generate-installation-command (car action-list)))
       (print "\nPaludis encountered an error!")
       (exit 1))))
-;; }}}
