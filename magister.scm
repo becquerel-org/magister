@@ -189,42 +189,33 @@ will be installed.")
     toolchain-list))
 
 ;; (generate-action-list): Generates a list of actions and passes it to execute-action-list.
-(define (generate-action-list)
+(define (generate-action-list state)
   (let ([action-list '()]
         [tc-list '()]
 	[system-list '()]
-	[everything-list '()]
-        [list=? (lambda (a b)
-                  (list= string=? a b))])
+	[everything-list '()])
     (display "\nCollecting Toolchain... ")
     (set! tc-list (generate-toolchain-list))
     (print "done")
     (when (or system? everything?)
 	(display "\nCollecting System... ")
         (set! system-list
-              (lset-difference
-               list=?
-               (extract-packages "system")
-               tc-list))
+              (lset-difference eq? (extract-packages "system") tc-list))
         (print "done"))
     (when everything?
 	(display "\nCollecting Everything... ")
         (set! everything-list
-              (lset-difference
-               list=?
-               (extract-packages "everything")
-               system-list
-               tc-list))
+              (lset-difference eq? (extract-packages "everything") system-list tc-list))
         (print "done"))
-    (when toolchain?
+    (when (toolchain? state)
       (set! action-list tc-list))
-    (when system?
+    (when (system? state)
       (set! action-list (append action-list system-list)))
-    (when everything?
+    (when (everything? state)
       (set! action-list (append action-list everything-list)))
-    (when pretend
-      (pretend-install action-list))
-    (execute-action-list action-list)))
+    (if (pretend?)
+      (pretend-install action-list)
+      (execute-action-list action-list))))
 
 ;;; File validity predicates
 ;; (configuration-file-r-ok?): Checks configuration file readability.
