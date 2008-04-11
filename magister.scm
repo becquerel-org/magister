@@ -38,12 +38,12 @@ exec csi -ss $0 "$@"
            (magister:state-verbose s) (magister:state-toolchain s) (magister:state-system s) (magister:state-everything s)
            (magister:state-version-lock s) (magister:state-pre-deps s) (magister:state-checks s) (magister:state-debug s)))
 (define-reader-ctor 'state make-magister:state)
-(define-record magister:action
+(define-record magister:package
   category package version slot repository)
-(define-record-printer (magister:action a out)
-  (fprintf out "#,(action category: ~S package: ~S version: ~S slot: ~S repository: ~S)"
-           (magister:action-category a) (magister:action-package a) (magister:action-version a) (magister:action-slot a) (magister:action-repository a)))
-(define-reader-ctor 'action make-magister:action)
+(define-record-printer (magister:package a out)
+  (fprintf out "#,(package category: ~S package: ~S version: ~S slot: ~S repository: ~S)"
+           (magister:package-category a) (magister:package-package a) (magister:package-version a) (magister:package-slot a) (magister:package-repository a)))
+(define-reader-ctor 'package make-magister:package)
 (define option-spec (list (args:make-option (p pretend)                 #:none
                                             "Pretend only: do not reinstall")
                           (args:make-option (V verbose)              #:none
@@ -162,8 +162,8 @@ will be installed.")
 	 [gcc-3.3?
 	  (system-execute-action "paludis --match sys-devel/gcc:3.3")]
 	 [mpfr?
-          (or (>= 4.3 (string->number (string-drop 1 (second (hash-table-ref package-table "gcc")))))
-              (and (string-match ":4\\..*" (second (hash-table-ref package-table "gcc")))
+          (or (>= 4.3 (string->number (string-drop 1 (magister:package-slot (hash-table-ref package-table "gcc")))))
+              (and (string-match ":4\\..*" (magister:package-slot (hash-table-ref package-table "gcc")))
                    (built-with-use? (hash-table-ref package-table "gcc") "fortran")))])
     (for-each (lambda (package) (hash-table-set! package (extract-package package)))
 	      '("glibc" "libtool" "binutils" "gcc"))
