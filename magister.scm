@@ -155,15 +155,16 @@ will be installed.")
 ;; (generate-toolchain-list): Creates a list of toolchain packages to be reinstalled.
 ;; linux-headers glibc libtool binutils (gmp mpfr) gcc ?libstdc++-v3 ?gcc:3.3
 (define (generate-toolchain-list)
-  (let* ([package-table (make-hash-table)]
+  (let* ([package-table (make-hash-table string-ci=? string-ci-hash)]
 	 [toolchain-list (list (extract-package "linux-headers"))]
 	 [libstdc++?
 	  (system-execute-action "paludis --match sys-libs/libstdc++-v3")]
 	 [gcc-3.3?
 	  (system-execute-action "paludis --match sys-devel/gcc:3.3")]
 	 [mpfr?
-	  (and (string-match ":4\\..*" (second (hash-table-ref package-table "gcc")))
-	       (built-with-use? (hash-table-ref package-table "gcc") "fortran"))])
+          (or (>= 4.3 (string->number (string-drop 1 (second (hash-table-ref package-table "gcc")))))
+              (and (string-match ":4\\..*" (second (hash-table-ref package-table "gcc")))
+                   (built-with-use? (hash-table-ref package-table "gcc") "fortran")))])
     (for-each (lambda (package) (hash-table-set! package (extract-package package)))
 	      '("glibc" "libtool" "binutils" "gcc"))
     (when libstdc++?
