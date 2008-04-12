@@ -10,7 +10,7 @@
                      system-execute-action
                      get-configuration))
 
-(use library extras posix utils match)
+(use extras posix utils match)
 
 ;;; Reads a list of lines for a pipe.
 ;;; Returns the output of the pipe, as a list of strings.
@@ -78,4 +78,4 @@
     (string-substitute varmatch
 		       ""
 		       (car (grep varmatch
-				  (with-input-from-file *system-configuration-file* read-lines))))))
+				  (with-input-from-file (session-config-file session) read-lines))))))

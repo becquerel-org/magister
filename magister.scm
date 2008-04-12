@@ -23,8 +23,8 @@ exec csi -ss $0 "$@"
                      parse-options check-environment))
 
 ;;; Interpreter settings.
-(use library extras posix utils regex srfi-1 srfi-13 srfi-69)
-(use args)
+(use extras posix utils regex srfi-1 srfi-13 srfi-69)
+(use args miscmacros)
 
 ;;; Top-level variables.
 (define-record session
@@ -32,11 +32,11 @@ exec csi -ss $0 "$@"
 (define session
   (make-session "0.2.0" "/etc/properize.conf" #f #f "/var/tmp/magister-resume"))
 (define-record state
-  verbose toolchain system everything version-lock pre-deps checks debug)
+  verbose toolchain system everything version-lock pre-deps upgrade checks debug)
 (define-record-printer (state s out)
   (fprintf out "#,(state verbose: ~S toolchain: ~S system: ~S everything: ~S version-lock: ~S pre-deps: ~S checks: ~S debug: ~S)"
-           (state-verbose s)      (state-toolchain s) (state-system s) (state-everything s)
-           (state-version-lock s) (state-pre-deps s)  (state-checks s) (state-debug s)))
+           (state-verbose s)      (state-toolchain s) (state-system s)  (state-everything s)
+           (state-version-lock s) (state-pre-deps s)  (state-upgrade s) (state-checks s) (state-debug s)))
 (define-reader-ctor 'state make-state)
 (define-record package
   category name version slot repository)
@@ -218,7 +218,7 @@ will be installed.")
     (when (everything? state)
       (set! action-list (append action-list everything-list)))
     (if (pretend?)
-      (pretend-install action-list)
+      (paludis-pretend action-list)
       (execute-action-list action-list))))
 
 ;;; File validity predicates
@@ -279,7 +279,7 @@ will be installed.")
           [else (session-state-file-set! session state-file)])
     (if (version-lock-ok? version-lock)
         (state-version-lock-set! state version-lock)
-        (begin (print "\nIn " *system-configuration-file* "\n"
+        (begin (print "\nIn " (session-config-file session) "\n"
                       "Unrecognised value for option 'version-lock': " version-lock)
                (exit 1)))
     (state-pre-deps-set! state pre-deps)
@@ -334,6 +334,6 @@ will be installed.")
   ;; if called w. no arguments, print help and exit.
   (if (null? (command-line-arguments))
       (begin (print-header)
-             (print-help)
+             (print-usage)
              (exit))
       (parse-options)))

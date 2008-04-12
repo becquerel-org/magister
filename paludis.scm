@@ -13,9 +13,10 @@
                      extract-package
                      pretend-install
                      built-with-use?
+                     resume-read resume-write
                      execute-action-list))
 
-(use library extras posix utils regex srfi-1)
+(use extras posix utils regex srfi-1)
 
 ;;; General paludis handlers
 ;; (multiple-versions?): predicate for forcing slot info in fqpn generation.
@@ -121,6 +122,20 @@
   (pair? (grep flag (read-pipe-list (string-append "paludis --environment-variable "
                                                    (package-category package) "/" (package-name package) (package-slot package) "[=" (package-version package) "]"
                                                    " USE")))))
+
+;;; Resume-file reading and writing
+;; (resume-read) Reads the action-list from the resume-file, and returns it.
+;; Returns the state record and action list.
+(define (resume-read)
+  (let ((state-list (with-input-from-file (session-state-file session) (lambda () (read)))))
+    (values (car state-list) (cdr state-list))))
+
+;; (resume-write) Nothing fancy, just dumps the action-list into a file.
+;; <state> must be a a state record.
+;; <action-list> better be the list you wanna write to the resume-file.
+;; Returns undefined.
+(define (resume-write state action-list)
+  (with-output-to-file (session-state-file session) (lambda () (write (cons state action-list)))))
 
 ;;; Action-list execution
 ;; (execute-action-list): Iterates over an action list, saving it to disk before running it.
