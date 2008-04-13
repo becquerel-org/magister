@@ -30,7 +30,7 @@ exec csi -ss $0 "$@"
 (define-record session
   version config-file pretend resume state-file)
 (define session
-  (make-session "0.2.0" "/etc/properize.conf" #f #f "/var/tmp/magister-resume"))
+  (make-session "0.2.0" "/etc/magister.conf" #f #f "/var/tmp/magister-resume"))
 (define-record state
   verbose toolchain system everything version-lock pre-deps upgrade checks debug)
 (define-record-printer (state s out)
@@ -326,7 +326,7 @@ will be installed.")
 
 ;;; The world is burning, run!
 ;; Validates non-option environment, starts option parsing.
-(define (main)
+(define (main args)
   ;; check that the state-dir variable points to a valid location.
   (unless (configuration-file-r-ok?)
     (print "\nCannot read the configuration file.")
