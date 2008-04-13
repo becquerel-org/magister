@@ -63,12 +63,8 @@
   (car (apply read-pipe-list* args)))
 
 ;;; A simple wrapper for running shell commands
-(define system-execute-action
-  (case-lambda
-   [(commandline)
-    (nth-value 1 (process-wait (process-run (->string commandline))))]
-   [(command . args)
-    (nth-value 1 (process-wait (process-run (->string command) (map ->string args))))]))
+(define (system-execute-action commandline)
+  (= 0 (system commandline)))
 
 ;;; Reads the configuration file, returning the value of variable var.
 ;;; <var> must be a string, the name of the variable you want to retrieve.

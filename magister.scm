@@ -29,6 +29,9 @@ exec csi -ss $0 "$@"
 ;;; Top-level variables.
 (define-record session
   version config-file pretend resume state-file)
+(define-record-printer (session s out)
+  (fprintf out "#,(session ~S ~S ~S ~S ~S)"
+           (session-version s) (session-config-file s) (session-pretend s) (session-resume s) (session-state-file s)))
 (define session
   (make-session "0.2.0" "/etc/magister.conf" #f #f "/var/tmp/magister-resume"))
 (define-record state
@@ -79,6 +82,8 @@ exec csi -ss $0 "$@"
                           (args:make-option (h help)                 #:none
                                                "Display this text"
                                                (print-usage))))
+;; clear the PALUDIS_OPTIONS env var.
+(unsetenv "PALUDIS_OPTIONS")
 
 ;;; Units
 (declare (uses paludis shell))
@@ -158,38 +163,38 @@ will be installed.")
 ;;; Action-list generation
 ;; (generate-toolchain-list): Creates a list of toolchain packages to be reinstalled.
 ;; linux-headers glibc libtool binutils (gmp mpfr) gcc ?libstdc++-v3 ?gcc:3.3
-(define (generate-toolchain-list)
+(define (generate-toolchain-list state)
   (let* ([package-table (make-hash-table string-ci=? string-ci-hash)]
-	 [toolchain-list (list (extract-package "linux-headers"))]
+	 [toolchain-list (list (extract-package state "linux-headers"))]
 	 [libstdc++?
-	  (system-execute-action "paludis --match sys-libs/libstdc++-v3")]
+	  (system-execute-action "paludis --match sys-libs/libstdc++-v3 &>/dev/null")]
 	 [gcc-3.3?
-	  (system-execute-action "paludis --match sys-devel/gcc:3.3")]
-	 [mpfr?
-          (or (>= 4.3 (string->number (string-drop 1 (package-slot (hash-table-ref package-table "gcc")))))
-              (and (string-match ":4\\..*" (package-slot (hash-table-ref package-table "gcc")))
-                   (built-with-use? (hash-table-ref package-table "gcc") "fortran")))])
-    (for-each (lambda (package) (hash-table-set! package (extract-package package)))
+	  (system-execute-action "paludis --match sys-devel/gcc:3.3 &>/dev/null")]
+	 [mpfr? #f])
+    (for-each (lambda (package) (hash-table-set! package-table package (extract-package state package)))
 	      '("glibc" "libtool" "binutils" "gcc"))
+    (set! mpfr? (or (>= 4.3 (string->number (string-drop (package-slot (hash-table-ref package-table "gcc")) 1)))
+                    (and (string-match ":4\\..*" (package-slot (hash-table-ref package-table "gcc")))
+                         (built-with-use? (hash-table-ref package-table "gcc") "fortran"))))
     (when libstdc++?
-      (hash-table-set! "libstdc++" (extract-package "libstdc++-v3")))
+      (hash-table-set! package-table "libstdc++" (extract-package state "libstdc++-v3")))
     (when gcc-3.3?
-      (hash-table-set! "gcc-3.3" (extract-package "sys-devel/gcc:3.3")))
+      (hash-table-set! package-table "gcc-3.3" (extract-package state "sys-devel/gcc:3.3")))
     (when mpfr?
-      (hash-table-set! "gmp" (extract-package "gmp"))
-      (hash-table-set! "mpfr" (extract-package "mpfr")))
+      (hash-table-set! package-table "gmp" (extract-package state "gmp"))
+      (hash-table-set! package-table "mpfr" (extract-package state "mpfr")))
     (repeat 2
             (for-each (lambda (package-name)
-                        (set! toolchain-list (append toolchain-list (hash-table-ref package-table package-name))))
+                        (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table package-name)))))
                       '("glibc" "libtool" "binutils"))
             (when mpfr?
-              (set! toolchain-list (append toolchain-list (hash-table-ref package-table "gmp")))
-              (set! toolchain-list (append toolchain-list (hash-table-ref package-table "mpfr"))))
-            (set! toolchain-list (append toolchain-list (hash-table-ref package-table "gcc"))))
+              (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "gmp"))))
+              (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "mpfr")))))
+            (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "gcc")))))
     (when gcc-3.3?
-      (set! toolchain-list (append toolchain-list (hash-table-ref package-table "gcc-3.3"))))
+      (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "gcc-3.3")))))
     (when libstdc++?
-      (set! toolchain-list (append toolchain-list (hash-table-ref package-table "libstdc++"))))
+      (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "libstdc++")))))
     toolchain-list))
 
 ;; (generate-action-list): Generates a list of actions and passes it to execute-action-list.
@@ -199,17 +204,18 @@ will be installed.")
 	[system-list '()]
 	[everything-list '()])
     (display "\nCollecting Toolchain... ")
-    (set! tc-list (generate-toolchain-list))
+    (set! tc-list (generate-toolchain-list state))
     (print "done")
-    (when (or system? everything?)
+    (when (or (system? state)
+              (everything? state))
 	(display "\nCollecting System... ")
         (set! system-list
-              (lset-difference eq? (extract-packages "system") tc-list))
+              (lset-difference eq? (extract-packages state "system") tc-list))
         (print "done"))
-    (when everything?
+    (when (everything? state)
 	(display "\nCollecting Everything... ")
         (set! everything-list
-              (lset-difference eq? (extract-packages "everything") system-list tc-list))
+              (lset-difference eq? (extract-packages state "everything") system-list tc-list))
         (print "done"))
     (when (toolchain? state)
       (set! action-list tc-list))
@@ -218,8 +224,8 @@ will be installed.")
     (when (everything? state)
       (set! action-list (append action-list everything-list)))
     (if (pretend?)
-      (paludis-pretend action-list)
-      (execute-action-list action-list))))
+        (paludis-pretend state action-list)
+        (execute-action-list state action-list))))
 
 ;;; File validity predicates
 ;; (configuration-file-r-ok?): Checks configuration file readability.
@@ -262,11 +268,11 @@ will be installed.")
   (let* ([state-file   (get-configuration "state-file")]
          [state-dir    (pathname-directory state-file)]
          [version-lock (string->symbol (get-configuration "version-lock"))]
-         [pre-deps     (string->symbol (get-configuration "pre-dependencies"))]
-         [checks       (string->symbol (get-configuration "checks"))]
-         [debug        (string->symbol (get-configuration "debug"))])
-    (cond [(and (not state-dir-ok? state-dir)
-		(not state-file-ok? state-file))
+         [pre-deps     (get-configuration "pre-dependencies")]
+         [checks       (get-configuration "checks")]
+         [debug        (get-configuration "debug")])
+    (cond [(and (not (state-dir-ok? state-dir))
+		(not (state-file-ok? state-file)))
 	   (begin (print "\nIncorrect permissions for path: " state-dir "\n"
                          "                      and file: " state-file)
                   (exit 1))]
@@ -292,17 +298,20 @@ will be installed.")
 (define (parse-commandline state)
   (receive (options operands)
       (args:parse (command-line-arguments) option-spec)
-    (session-resume-set!  session (alist-ref 'resume options))
-    (session-pretend-set! session (alist-ref 'pretend options))
-    (state-verbose-set!      state (alist-ref 'verbose options))
-    (state-toolchain-set!    state (alist-ref 'toolchain options))
-    (state-system-set!       state (alist-ref 'system options))
-    (state-everything-set!   state (alist-ref 'everything options))
-    (state-upgrade-set!      state (alist-ref 'upgrade options))
+    (session-resume-set!  session (pair? (assq 'resume options)))
+    (session-pretend-set! session (pair? (assq 'pretend options)))
+    (state-verbose-set!      state (pair? (assq 'verbose options)))
+    (state-toolchain-set!    state (pair? (assq 'toolchain options)))
+    (state-system-set!       state (pair? (assq 'system options)))
+    (state-everything-set!   state (pair? (assq 'everything options)))
+    (state-upgrade-set!      state (pair? (assq 'upgrade options)))
     (state-version-lock-set! state (string->symbol (or (alist-ref 'version-lock options) "slot")))
     (state-pre-deps-set!     state (or (alist-ref 'dl-installed-deps-pre options) "discard"))
     (state-checks-set!       state (or (alist-ref 'checks options) "none"))
     (state-debug-set!        state (or (alist-ref 'debug-build options) "none"))
+    (print options)
+    (print session)
+    (print state)
     state))
 
 ;;; Argument parser
@@ -310,18 +319,16 @@ will be installed.")
 ;; options and initial environment, and initiates action-list generation or resuming
 ; and action-list execution.
 (define (parse-options)
-  (let ([state (make-state #f #f #f #f 'slot "discard" "none" "none")])
+  (let ([state (make-state #f #f #f #f 'slot "discard" #f "none" "none")])
     (set! state (read-configuration-file state))
     (set! state (parse-commandline state))
-    ;; clear the PALUDIS_OPTIONS env var.
-    (unsetenv "PALUDIS_OPTIONS")
     (if (resume?)
         ;; If we got told to resume, read the state file and pass the
         ;; action-list to (execute-action-list).
         (begin (print "\nResuming ...")
                (execute-action-list state (resume-read)))
         ;; Else, proceed with action-list generation.
-        (begin (if (verbose?) (print "\nInitializing..."))
+        (begin (if (verbose? state) (print "\nInitializing..."))
                (generate-action-list state)))))
 
 ;;; The world is burning, run!
