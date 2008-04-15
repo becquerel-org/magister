@@ -20,7 +20,9 @@ exec csi -ss $0 "$@"
                      print-header print-usage resume-read resume-write
                      configuration-file-r-ok state-dir-ok? state-file-ok? version-lock-ok?
                      read-configuration-file parse-commandline
-                     parse-options check-environment))
+                     parse-options check-environment)
+ (unused session-config-file-set! state? session? package-version-set! session-version-set!
+         package-name-set! package? package-slot-set! package-repository-set! package-category-set!))
 
 ;;; Interpreter settings.
 (use extras posix utils regex srfi-1 srfi-13 srfi-69)
@@ -210,12 +212,12 @@ will be installed.")
               (everything? state))
 	(display "\nCollecting System... ")
         (set! system-list
-              (lset-difference eq? (extract-packages state "system") tc-list))
+              (lset-difference equal? (extract-packages state "system") tc-list))
         (print "done"))
     (when (everything? state)
 	(display "\nCollecting Everything... ")
         (set! everything-list
-              (lset-difference eq? (extract-packages state "everything") system-list tc-list))
+              (lset-difference equal? (extract-packages state "everything") system-list tc-list))
         (print "done"))
     (when (toolchain? state)
       (set! action-list tc-list))

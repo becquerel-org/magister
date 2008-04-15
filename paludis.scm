@@ -5,7 +5,7 @@
  (usual-integrations)
  (standard-bindings)
  (extended-bindings)
- (bound-to-precedure multiple-versions?
+ (bound-to-procedure multiple-versions?
                      generate-fqpn
                      generate-installation-command
                      generate-extraction-command

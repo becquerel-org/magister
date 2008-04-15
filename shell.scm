@@ -5,7 +5,7 @@
  (usual-integrations)
  (standard-bindings)
  (extended-bindings)
- (bound-to-precedure read-pipe-list read-pipe-list*
+ (bound-to-procedure read-pipe-list read-pipe-list*
                      read-pipe-line read-pipe-line*
                      system-execute-action
                      get-configuration))

@@ -1,0 +1,8 @@
+#!/bin/sh
+#| -*- mode: scheme; -*-
+exec chicken-setup -s $0 "$@"
+|#
+
+(make (("magister" ("magister.scm" "paludis.scm" "shell.scm")
+        (compile -v -O2 -d1 magister.scm paludis.scm shell.scm -o magister -postlude "\"(main (cdr (argv)))\"" -C "\"-march=athlon-xp -O2 -fomit-frame-pointer -pipe\"")))
+  '("magister"))
