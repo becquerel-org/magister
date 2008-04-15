@@ -1,16 +1,17 @@
-;;;
+;;; -*- mode: Scheme; -*-
 
-(declare
- (unit shell)
- (usual-integrations)
- (standard-bindings)
- (extended-bindings)
- (bound-to-procedure read-pipe-list read-pipe-list*
-                     read-pipe-line read-pipe-line*
-                     system-execute-action
-                     get-configuration))
-
-(use extras posix utils match)
+(cond-expand
+ (compiling
+  (declare
+   (usual-integrations)
+   (standard-bindings)
+   (extended-bindings)
+   (bound-to-procedure read-pipe-list read-pipe-list*
+                       read-pipe-line read-pipe-line*
+                       system-execute-action
+                       get-configuration)))
+ (else
+  (use extras posix utils match)))
 
 ;;; Reads a list of lines for a pipe.
 ;;; Returns the output of the pipe, as a list of strings.

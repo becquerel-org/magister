@@ -1,22 +1,20 @@
 ;;; -*- mode: Scheme; -*-
 
-(declare
- (unit paludis)
- (usual-integrations)
- (standard-bindings)
- (extended-bindings)
- (bound-to-procedure multiple-versions?
-                     generate-fqpn
-                     generate-installation-command
-                     generate-extraction-command
-                     extract-packages
-                     extract-package
-                     pretend-install
-                     built-with-use?
-                     resume-read resume-write
-                     execute-action-list))
-
-(use extras posix utils regex srfi-1)
+(cond-expand
+ (compiling
+  (declare
+   (usual-integrations)
+   (standard-bindings)
+   (extended-bindings)
+   (bound-to-procedure multiple-versions? generate-fqpn
+                       generate-installation-command
+                       generate-extraction-command
+                       extract-packages extract-package
+                       pretend-install built-with-use?
+                       resume-read resume-write
+                       execute-action-list)))
+ (else
+  (use extras posix utils regex srfi-1)))
 
 ;;; General paludis handlers
 ;; (multiple-versions?): predicate for forcing slot info in fqpn generation.

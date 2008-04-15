@@ -8,5 +8,5 @@ exec chicken-setup -s $0 "$@"
        ("paludis.o" ("paludis.scm")
         (compile -v -c -O2 -d1 paludis.scm -C "\"-march=athlon-xp -O2 -fomit-frame-pointer -pipe\""))
        ("magister" ("magister.scm" "paludis.o" "shell.o")
-        (compile -v -O2 -d1 magister.scm paludis.o shell.o -o magister -postlude "\"(main (cdr (argv)))\"" -C "\"-march=athlon-xp -O2 -fomit-frame-pointer -pipe\"")))
+        (compile -v -O2 -d1 magister.scm paludis.o shell.o -o magister -C "\"-march=athlon-xp -O2 -fomit-frame-pointer -pipe\"")))
   '("magister"))
