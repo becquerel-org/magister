@@ -5,8 +5,6 @@ exec csi -ss $0 "$@"
 ;;; Copyright (c) 2007-2008 Leonardo Valeri Manera <l DOT valerimanera AT google DOT com>
 ;;; This program is licensed under the terms of the General Public License version 2.
 
-(cond-expand (compiling (define (compiled?) #t)) (else (define (compiled?) #f)))
-
 ;;; Global declarations.
 (cond-expand
  (compiling
@@ -15,14 +13,11 @@ exec csi -ss $0 "$@"
    (usual-integrations)
    (standard-bindings)
    (extended-bindings)
-   (always-bound session option-spec)
-   (bound-to-procedure verbose? toolchain? system? everything?
-                       print-header print-usage resume-read resume-write
+   (always-bound option-spec)
+   (bound-to-procedure print-header print-usage resume-read resume-write
                        configuration-file-r-ok state-dir-ok? state-file-ok? version-lock-ok?
                        read-configuration-file parse-commandline
-                       parse-options check-environment)
-   (unused session-config-file-set! state? session? package-version-set! session-version-set!
-           package-name-set! package? package-slot-set! package-repository-set! package-category-set!)))
+                       parse-options check-environment)))
  (else))
 ;;; Chicken units and eggs.
 (use extras posix utils regex srfi-1 srfi-13 srfi-69)
@@ -35,21 +30,6 @@ exec csi -ss $0 "$@"
 (cond-expand
  (compiling (declare (uses magister-variables paludis shell)))
  (else (use magister-variables paludis shell)))
-
-;;; Option functions
-;; (<option>?): predicates for binary options.
-(define (verbose? state)
-  (state-verbose state))
-(define (toolchain? state)
-  (state-toolchain state))
-(define (system? state)
-  (state-system state))
-(define (everything? state)
-  (state-everything state))
-(define (pretend?)
-  (session-pretend session))
-(define (resume?)
-  (session-resume session))
 
 ;;; Display functions
 ;; (print-header): Prints version and basic copyright information.
@@ -106,6 +86,43 @@ will be installed.")
       (newline)
       (print "Report bugs to l DOT valerimanera AT gmail DOT com.")))
   (exit))
+
+;;; args options spec.
+(define option-spec (list (args:make-option (p pretend)              #:none
+                                            "Pretend only: do not reinstall")
+                          (args:make-option (V verbose)              #:none
+                                               "Be verbose about what's going on\n")
+                          (args:make-option (t toolchain)            #:none
+                                               "Reinstall the toolchain")
+                          (args:make-option (s system)               #:none
+                                               "Reinstall the 'system' set
+                                     Toolchain packages are filtered out")
+                          (args:make-option (e everything)           #:none
+                                               "Reinstall the 'everything' set
+                                     Toolchain and 'system' packages are filtered out\n")
+                          (args:make-option (u upgrade)              #:none
+                                               "Pass --dl-upgrade always to paludis while
+                                     generating package lists")
+                          (args:make-option (version-lock)          (#:required "level")
+                                               "How specific to be about the package's version
+                     none            Only use the package category/name
+                     slot            Use slot information where appropriate (default)
+                     version         Use the version number")
+                          (args:make-option (dl-installed-deps-pre) (#:required "option")
+                                               "As per the paludis option")
+                          (args:make-option (checks)                (#:required "when")
+                                               "As per the paludis option, defaults to 'none'")
+                          (args:make-option (debug-build)           (#:required "option")
+                                               "As per the paludis option, defaults to 'none'\n")
+                          (args:make-option (r resume)               #:none
+                                               "Resume an interrupted operation\n\n")
+                          (args:make-option (v version)              #:none
+                                               "Print version and exit"
+                                               (print-header)
+                                               (exit))
+                          (args:make-option (h help)                 #:none
+                                               "Display this text"
+                                               (print-usage))))
 
 ;;; Action-list generation
 ;; (generate-toolchain-list): Creates a list of toolchain packages to be reinstalled.

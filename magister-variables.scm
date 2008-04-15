@@ -5,20 +5,34 @@
  (compiling
   (declare
    (uses library)
-   (uses srfi-37 args)
    (usual-integrations)
    (standard-bindings)
    (extended-bindings)
-   (always-bound session option-spec)
+   (always-bound session)
+   (constant compiled? verbose? toolchain? system? everything? pretend? resume?)
    (bound-to-procedure compiled?
                        make-session session?
                        session-version session-config-file session-pretend session-resume session-state-file
                        session-version-set! session-config-file-set! session-pretend-set! session-resume-set! session-state-file-set!
-                       make-state state?)
-   (unused compiled?)))
- (else
-  (use extras posix utils regex srfi-1 srfi-13 srfi-69)
-  (use args)))
+                       make-state state?
+                       state-verbose state-toolchain state-system state-everything state-version-lock state-pre-deps state-upgrade state-checks state-debug
+                       state-verbose-set! state-toolchain-set! state-system-set! state-everything-set! state-version-lock-set! state-pre-deps-set! state-upgrade-set! state-checks-set! state-debug-set!
+                       make-package package?
+                       package-category package-name package-version package-slot package-repository
+                       package-category-set! package-name-set! package-version-set! package-slot-set! package-repository-set!
+                       verbose? toolchain? system? everything? pretend? resume?)
+   (unused compiled?
+           session?
+           session-version session-config-file session-state-file
+           session-version-set! session-config-file-set! session-pretend-set! session-resume-set! session-state-file-set!
+           make-state state?
+           state-version-lock state-pre-deps state-upgrade state-checks state-debug
+           state-verbose-set! state-toolchain-set! state-system-set! state-everything-set! state-version-lock-set! state-pre-deps-set! state-upgrade-set! state-checks-set! state-debug-set!
+           make-package package?
+           package-category package-name package-version package-slot package-repository
+           package-category-set! package-name-set! package-version-set! package-slot-set! package-repository-set!
+           verbose? toolchain? system? everything? pretend? resume?)))
+ (else))
 
 ;;; Top-level variables.
 (cond-expand (compiling (define (compiled?) #t)) (else (define (compiled?) #f)))
@@ -42,38 +56,18 @@
   (fprintf out "#,(package ~S ~S ~S ~S ~S)"
            (package-category a) (package-name a) (package-version a) (package-slot a) (package-repository a)))
 (define-reader-ctor 'package make-package)
-(define option-spec (list (args:make-option (p pretend)              #:none
-                                            "Pretend only: do not reinstall")
-                          (args:make-option (V verbose)              #:none
-                                               "Be verbose about what's going on\n")
-                          (args:make-option (t toolchain)            #:none
-                                               "Reinstall the toolchain")
-                          (args:make-option (s system)               #:none
-                                               "Reinstall the 'system' set
-                                     Toolchain packages are filtered out")
-                          (args:make-option (e everything)           #:none
-                                               "Reinstall the 'everything' set
-                                     Toolchain and 'system' packages are filtered out\n")
-                          (args:make-option (u upgrade)              #:none
-                                               "Pass --dl-upgrade always to paludis while
-                                     generating package lists")
-                          (args:make-option (version-lock)          (#:required "level")
-                                               "How specific to be about the package's version
-                     none            Only use the package category/name
-                     slot            Use slot information where appropriate (default)
-                     version         Use the version number")
-                          (args:make-option (dl-installed-deps-pre) (#:required "option")
-                                               "As per the paludis option")
-                          (args:make-option (checks)                (#:required "when")
-                                               "As per the paludis option, defaults to 'none'")
-                          (args:make-option (debug-build)           (#:required "option")
-                                               "As per the paludis option, defaults to 'none'\n")
-                          (args:make-option (r resume)               #:none
-                                               "Resume an interrupted operation\n\n")
-                          (args:make-option (v version)              #:none
-                                               "Print version and exit"
-                                               (print-header)
-                                               (exit))
-                          (args:make-option (h help)                 #:none
-                                               "Display this text"
-                                               (print-usage))))
+
+;;; Option functions
+;; (<option>?): predicates for binary options.
+(define (verbose? state)
+  (state-verbose state))
+(define (toolchain? state)
+  (state-toolchain state))
+(define (system? state)
+  (state-system state))
+(define (everything? state)
+  (state-everything state))
+(define (pretend?)
+  (session-pretend session))
+(define (resume?)
+  (session-resume session))
