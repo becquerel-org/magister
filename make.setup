@@ -3,10 +3,12 @@
 exec chicken-setup -s $0 "$@"
 |#
 
-(make (("shell.o" ("shell.scm")
-        (compile -v -c -O2 -d1 shell.scm -C "\"-march=athlon-xp -O2 -fomit-frame-pointer -pipe\""))
+(make (("magister-versions.o" ("magister-versions.scm")
+        (compile -x -v -c -O2 -d1 magister-versions.scm))
+       ("shell.o" ("shell.scm")
+        (compile -v -c -O2 -d1 shell.scm))
        ("paludis.o" ("paludis.scm")
-        (compile -v -c -O2 -d1 paludis.scm -C "\"-march=athlon-xp -O2 -fomit-frame-pointer -pipe\""))
+        (compile -v -c -O2 -d1 paludis.scm))
        ("magister" ("magister.scm" "paludis.o" "shell.o")
-        (compile -v -O2 -d1 magister.scm paludis.o shell.o -o magister -C "\"-march=athlon-xp -O2 -fomit-frame-pointer -pipe\"")))
+        (compile -v -O2 -d1 magister.scm paludis.o shell.o -o magister)))
   '("magister"))

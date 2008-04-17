@@ -3,65 +3,27 @@
 (cond-expand
  (compiling
   (declare
+   (uses library extras posix regex magister-versions)
    (usual-integrations)
    (standard-bindings)
    (extended-bindings)
-   (bound-to-procedure read-pipe-list read-pipe-list*
-                       read-pipe-line read-pipe-line*
+   (bound-to-procedure read-pipe-list read-pipe-line
                        system-execute-action
-                       get-configuration)))
+                       get-configuration)
+   (unused read-pipe-line system-execute-action get-configuration)))
  (else
-  (use extras posix utils match)))
+  (use extras posix regex magister-versions)))
 
 ;;; Reads a list of lines for a pipe.
 ;;; Returns the output of the pipe, as a list of strings.
-;;; Usage is the same as the chicken (process) function.
-(define read-pipe-list
-  (match-lambda*
-   [((? atom? commandline))
-    (call-with-input-pipe commandline read-lines)]
-   [((? atom? command) ((? atom? args) ...))
-    (let-values ([(input output pid) (process command args)])
-      (process-wait pid)
-      (close-output-port output)
-      (with-input-from-port input read-lines))]
-   [((? atom? command) ((? atom? args) ...) ((? atom? env) ...))
-    (let-values ([(input output pid) (process command args env)])
-      (process-wait pid)
-      (close-output-port output)
-      (with-input-from-port input read-lines))]))
-;;; As above, but returns raw.
-(define read-pipe-list*
-  (match-lambda*
-   [((? atom? commandline))
-    (with-input-from-pipe
-     commandline
-     (lambda ()
-       (port-map identity read)))]
-   [((? atom? command) ((? atom? args) ...))
-    (let-values ([(input output pid) (process command args)])
-      (process-wait pid)
-      (close-output-port output)
-      (with-input-from-port input
-        (lambda ()
-          (port-map identity read))))]
-   [((? atom? command) ((? atom? args) ...) ((? atom? env) ...))
-    (let-values ([(input output pid) (process command args env)])
-      (process-wait pid)
-      (close-output-port output)
-      (with-input-from-port input
-        (lambda ()
-          (port-map identity read))))]))
+(define (read-pipe-list commandline)
+  (call-with-input-pipe commandline read-lines))
 
 ;;; Read a single line of input from a pipe.
 ;;; Returns the first line of the output of the pipe,
 ;;; as a string.
-;;; Usage is the same as the (process) chicken function.
-(define (read-pipe-line . args)
-  (car (apply read-pipe-list args)))
-;;; As above, but returns raw.
-(define (read-pipe-line* . args)
-  (car (apply read-pipe-list* args)))
+(define (read-pipe-line commandline)
+  (car (read-pipe-list commandline)))
 
 ;;; A simple wrapper for running shell commands
 (define (system-execute-action commandline)
