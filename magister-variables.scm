@@ -4,8 +4,7 @@
 (cond-expand
  (compiling
   (declare
-   (uses library)
-   (usual-integrations)
+   (unit magister-variables)
    (standard-bindings)
    (extended-bindings)
    (always-bound session)

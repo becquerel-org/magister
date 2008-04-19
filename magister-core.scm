@@ -6,11 +6,12 @@ exec csi -ss $0 "$@"
 ;;; This program is licensed under the terms of the General Public License version 2.
 
 ;;; Global declarations.
+(use extras posix utils regex srfi-1 srfi-13 srfi-69)
+(use args miscmacros)
 (cond-expand
  (compiling
   (declare
-   ;(block)
-   (usual-integrations)
+   (uses magister-variables magister-paludis magister-shell)
    (standard-bindings)
    (extended-bindings)
    (always-bound option-spec)
@@ -18,18 +19,11 @@ exec csi -ss $0 "$@"
                        configuration-file-r-ok state-dir-ok? state-file-ok? version-lock-ok?
                        read-configuration-file parse-commandline
                        parse-options check-environment)))
- (else))
-;;; Chicken units and eggs.
-(use extras posix utils regex srfi-1 srfi-13 srfi-69)
-(use args miscmacros)
+ (else
+  (use magister-variables magister-paludis magister-shell)))
 
 ;;; clear the PALUDIS_OPTIONS env var.
 (unsetenv "PALUDIS_OPTIONS")
-
-;;; Units
-(cond-expand
- (compiling (declare (uses magister-variables magister-paludis magister-shell)))
- (else (use magister-variables magister-paludis magister-shell)))
 
 ;;; Display functions
 ;; (print-header): Prints version and basic copyright information.

@@ -1,10 +1,11 @@
 ;;; -*- mode: Scheme; -*-
 
+(use extras posix utils regex srfi-1)
 (cond-expand
  (compiling
   (declare
-   (uses library extras posix utils regex srfi-1 magister-shell magister-variables)
-   (usual-integrations)
+   (unit magister-paludis)
+   (uses magister-variables magister-shell)
    (standard-bindings)
    (extended-bindings)
    (bound-to-procedure multiple-versions? generate-fqpn
@@ -15,7 +16,7 @@
                        resume-read resume-write
                        execute-action-list)))
  (else
-  (use extras posix utils regex srfi-1 magister-shell magister-variables)))
+  (use magister-shell magister-variables)))
 
 ;;; General paludis handlers
 ;; (multiple-versions?): predicate for forcing slot info in fqpn generation.
