@@ -3,12 +3,12 @@
 exec chicken-setup -s $0 "$@"
 |#
 
-(make (("magister-versions.o" ("magister-versions.scm")
-        (compile -x -v -c -O2 -d1 magister-versions.scm))
-       ("shell.o" ("shell.scm")
-        (compile -v -c -O2 -d1 shell.scm))
-       ("paludis.o" ("paludis.scm")
-        (compile -v -c -O2 -d1 paludis.scm))
-       ("magister" ("magister.scm" "paludis.o" "shell.o")
-        (compile -v -O2 -d1 magister.scm paludis.o shell.o -o magister)))
+(make (("magister-variables.o" ("magister-variables.scm")
+        (compile -x -v -c -O2 -d1 magister-variables.scm))
+       ("magister-shell.o" ("magister-shell.scm" "magister-variables.o")
+        (compile -v -c -O2 -d1 magister-shell.scm magister-variables.o -o magister-shell.o))
+       ("magister-paludis.o" ("magister-paludis.scm" "magister-shell.o" "magister-variables.o")
+        (compile -v -c -O2 -d1 magister-paludis.scm magister-shell.o -o magister-paludis.scm))
+       ("magister" ("magister-core.scm" "magister-paludis.o" "magister-shell.o" "magister-variables.o")
+        (compile -v -O2 -d1 magister-core.scm magister-paludis.o magister-shell.o magister-variables.o -o magister)))
   '("magister"))

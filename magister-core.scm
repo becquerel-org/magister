@@ -28,8 +28,8 @@ exec csi -ss $0 "$@"
 
 ;;; Units
 (cond-expand
- (compiling (declare (uses magister-variables paludis shell)))
- (else (use magister-variables paludis shell)))
+ (compiling (declare (uses magister-variables magister-paludis magister-shell)))
+ (else (use magister-variables magister-paludis magister-shell)))
 
 ;;; Display functions
 ;; (print-header): Prints version and basic copyright information.
