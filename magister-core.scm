@@ -6,10 +6,11 @@ exec csi -ss $0 "$@"
 ;;; This program is licensed under the terms of the General Public License version 2.
 
 ;;; Global declarations.
-(use extras posix utils regex srfi-1 srfi-13 srfi-69)
-(use args miscmacros)
 (cond-expand
  (compiling
+  (declare
+   (uses library extras posix utils regex srfi-1 srfi-13 srfi-69))
+  (use args miscmacros)
   (declare
    (uses magister-variables magister-paludis magister-shell)
    (standard-bindings)
@@ -20,6 +21,8 @@ exec csi -ss $0 "$@"
                        read-configuration-file parse-commandline
                        parse-options check-environment)))
  (else
+  (use extras posix utils regex srfi-1 srfi-13 srfi-69)
+  (use args miscmacros)
   (use magister-variables magister-paludis magister-shell)))
 
 ;;; clear the PALUDIS_OPTIONS env var.

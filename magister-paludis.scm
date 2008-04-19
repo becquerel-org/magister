@@ -1,10 +1,10 @@
 ;;; -*- mode: Scheme; -*-
 
-(use extras posix utils regex srfi-1)
 (cond-expand
  (compiling
   (declare
    (unit magister-paludis)
+   (uses library extras posix utils regex srfi-1)
    (uses magister-variables magister-shell)
    (standard-bindings)
    (extended-bindings)
@@ -16,6 +16,7 @@
                        resume-read resume-write
                        execute-action-list)))
  (else
+  (use extras posix utils regex srfi-1)
   (use magister-shell magister-variables)))
 
 ;;; General paludis handlers

@@ -1,10 +1,10 @@
 ;;; -*- mode: Scheme; -*-
 
-(use extras posix regex)
 (cond-expand
  (compiling
   (declare
    (unit magister-shell)
+   (uses library extras posix regex)
    (uses magister-variables)
    (standard-bindings)
    (extended-bindings)
@@ -13,6 +13,7 @@
                        get-configuration)
    (unused read-pipe-line system-execute-action get-configuration)))
  (else
+  (use extras posix regex)
   (use magister-variables)))
 
 ;;; Reads a list of lines for a pipe.

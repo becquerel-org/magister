@@ -5,6 +5,7 @@
  (compiling
   (declare
    (unit magister-variables)
+   (uses library)
    (standard-bindings)
    (extended-bindings)
    (always-bound session)
