@@ -14,3 +14,11 @@ exec chicken-setup -s $0 "$@"
        ("magister" ("magister-core.o" "magister-paludis.o" "magister-shell.o" "magister-variables.o")
         (compile -v -O2 -d1 magister-core.o magister-paludis.o magister-shell.o magister-variables.o -o magister)))
   '("magister"))
+
+(for-each
+ (lambda (filename) (if (file-exists? filename)
+                    (delete-file filename)))
+ '("magister-variables.o"
+   "magister-shell.o"
+   "magister-paludis.o"
+   "magister-core.o"))
