@@ -46,10 +46,12 @@
 (define-record state
   verbose toolchain system everything version-lock pre-deps upgrade checks debug)
 (define-record-printer (state s out)
-  (fprintf out "#,(state verbose: ~S toolchain: ~S system: ~S everything: ~S version-lock: ~S pre-deps: ~S checks: ~S debug: ~S)"
+  (fprintf out "#,(state verbose: ~S toolchain: ~S system: ~S everything: ~S version-lock: ~S pre-deps: ~S upgrade: ~S checks: ~S debug: ~S)"
            (state-verbose s)      (state-toolchain s) (state-system s)  (state-everything s)
            (state-version-lock s) (state-pre-deps s)  (state-upgrade s) (state-checks s) (state-debug s)))
-(define-reader-ctor 'state make-state)
+(define (read-state verbose: verbose toolchain: toolchain system: system everything: everything version-lock: version-lock pre-deps: pre-deps upgrade: upgrade checks: checks debug: debug)
+  (make-state verbose toolchain system everything version-lock pre-deps upgrade checks debug))
+(define-reader-ctor 'state read-state)
 (define-record package
   category name version slot repository)
 (define-record-printer (package a out)
