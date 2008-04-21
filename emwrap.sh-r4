@@ -1,0 +1,797 @@
+#!/bin/bash
+# Copyright (c) 2004-2007 Hiel Van Campen <hielvc>@{behind the at}<cox.net>
+# This program is licensed under the terms of the GPL version 2.
+# No blame for this prog should be assinged to Gentoo. Ell they went so far as to stick me in the
+# cellar of unsuported software and all I wanted was to be is a dev like them. To drink Mai-tai's, 
+# chasem wild women's and drivem sporty cars. Well at least
+# the mUderators promoted me to a OSER so eat your heart out 
+# 
+# Use at yee own risk. It works for me, but then I wrote it.
+# Thanks to ecatmur's dep script, gentoo forums, for help_fmt and print_help and clever bashing.
+#  "	MindEraser for her, I think, ideas and script, tcupdate when we first started this beast. 
+#  "	maguire's "emwrap" script, I borrowed his gcc-config. This will hopefully stop 
+# 	 your perfered gcc from being switched, as alot of us have had happen at one time or the
+# 	 other. Oh maquire what a dumb script name. ;^)
+# Version 3.0.6 , 12-15-05 Added saving of the failed to roots dir. 
+# Cleaned up and fixed formatting.
+# Version 3.0.7 Added build TC once flag such that TC is built only once instead  of twice.
+# Added build file and failed file detection. If found emwrap.sh will offer to build them
+# instead of what you were going to do. Ergo failed is no longer moved to /root 
+# Removed Portage gcc-config and binutils-config from TC filtering and from TC update
+# notification. When they're found they get built
+# 1-20-06 Minor updates to help showing -S and -1 usage. Re-added resume filter to diff_emerge 
+# 2-1-06 The end of a major rewrite and the addition of several new features including adding
+# libstdc to the TC  Some minor things to do or not. Better input control? Do I want to trust
+# a script to switch gcc?
+# 2-13-06 removed tc_filter from sys.lst and wrld.lst in to fix filtering error and save an
+# unnecessary step. Also fixed TC from running -se in a -sept case. Added dagurasu suggestion for
+# a CTRL-C trap.I will no longer be able to build a failed list for when I test :( 
+# Bumped up Rev to 4.0.1 
+# Fixed help. Added " exit " to print_help. 2-18-06
+# Added version info to "function info" 2-17-06
+# Added version to TC list in tc_emerge 3-27-06. Found a package longer than
+# "-c17-60".
+# Added binutils-config and gcc-config filter to remove them from wrld.lst if TC is being
+# built.4-1-06 
+# 5-5-06 Went back to using just "cut" for file clean up. Its more general purpose than sed. Also
+# added "exclude" filtering. Note "exclude or -X" have to be the last option because everything
+# after them is put into the exclude_filter. Thanks to dol-sen and Tron_5
+# 5-7-06 Added "-q" to flags for more concise pretend output. Also hardwired into all emerges
+# for list generation. 5-8-06 moved exclude filter to wrld_lst that way it works for everything
+# except the TC. 5-18-06 Changed libstdc to a variable such that if you don't have an stdc I wont
+# give you one ! 5-22-06 added clean-up code to clean_up to remove the files created during sys
+# file removal from wrld list in World_minus_system_emerge function.
+# 5-28-06 put maguire's gcc-config in. bumped version to 4.0.5
+# July and early August added removed added gcc-config and eselect joy POCKIN joy
+# 8-14-06 Realized it would be nice to jsut get the version info so added version_info and
+# added parameter checking to optargs.
+# 8-18-06 added the exclude    url=http://www.fi3nd.net/linux/emwrap.sh
+# 9-18-07 fixed changed of gcc config from /etc/env.d/gcc/config to gcc/config-i686-pc-linux-gnu
+# 10-14-07 Makeing use of CHOST for gcc_config -> gcc/config-${CHOST}
+# 10-15-07 Added "config" search and use for gcc-config.
+
+PROG="emwrap.sh"
+VERSION="4.0.8 with gcc-config-r4"
+DATE="Mon Oct 15 21:41:56 PDT 2007"
+TAG="The fuzzy tailed rats are winning, Elp"
+DESC="A wrapper for emerge so you can break emerges into chunks, TC, system, world 
+ or world - system"
+
+print_help(){
+   	cat <<-END #|help_fmt
+   
+   	${GR}${PROG}  v. ${VERSION} ${Cy}"${TAG}"${NO}
+   	${GR}${DESC} ${DATE}${NO}
+
+Usage: ${PROG} [OPTION]
+
+Date 4-23-05
+Use at yee own risk. It works for me, but then I wrote it. 
+The main idea behind emwrap.sh is if the TC is going to be rebuilt or updated do
+it first, then do the rest. The script takes the output of emerge and puts 
+it into a list, which we can break into chunks, the TC, system, and world.
+
+1. Test if there is a toolchain, TC, update. emwrap.sh will not do anything to your TC
+    unless you tell it to with the "t" or "b" flags. Unles they're passed, whatever emerge
+    is going to do will have the TC files removed. So a "emerge system -e" will really be
+    system - TC, unless you pass the "t" or "b" flag.
+2. If there is and you want to, then you can rebuild all or part of your TC and then
+   	using an edited list to build the other items scheduled to be updated.
+3. Do the update without updating the TC, toolchain.
+Options:
+    These first flags are the same as what you use with emerge [options] See "man emerge"
+        -h or ? or  help	Display this help (default)
+        -f      Fetches files only
+        -u      update
+        -D      deep   
+        -e      Does an  emerge "--emptytree" world/system
+        -p      Just like pretend in emerge. Works with all other flags.
+        -N      Tells emerge to include installed packages that are affected by the new USE flags
+                that have changed since the program was built.
+        -B/b    build packages only or build them as you emerge packages
+        resume, -r    Continues emwrap from where it stopped. To use rerun the same command
+                and add "r" ${Rd}DONT${Yl} USE EMWRAP.SH FOR ANYTHING ELSE UNTIL YOU RUN THE -r${NO}
+                and emwrap will start from where it stopped without having to rebuild everything
+                already done.
+        -K/k	use packages. For use if you have --buildpkg in your /etc/make.conf  or use -B/b
+        -G/g    use packages from a  PORTAGE_BINHOST server.
+        system, -s   "-s" is short for system.The same as "emerge system"
+        world, -w    "-w" is short for world. The same as "emerge world"
+        
+For use by the script
+        -q      Quite, it changes the output format in when you run pretend. Try it to see
+                which output you like. 
+        -t      Rebuilds the toolchain components only
+        -b      Rebuilds the toolchain and resumes the emerge.
+        -1      For use with "t" or "b" only builds the TC once.
+        -S      This is short for a "emerge system --emptytree" build.
+        -W      builds the world files, "emerge world -e", BUT minus the system files.
+                failed  builds the files in the failed list.
+        nc      Turns off color in the script. You still get color in emerge out put.
+        exclude or -X   After either must follow a space separated list of files to be excluded
+                from being built. EX: emwrap.sh world -uDX gentoo-source openoffice KDE my_program
+                or emwrap.sh -uDN system exclude (or -X) openoffice KDE my_program 
+        -V, or version    Gives short version info.
+ 
+The flags are chainable and change whether your doing a system or world emerge and
+from -uD, -N, to -e. There is also a pretend mode, -p. Like emerge -p it
+shows you what will be emerged. I recommend that instead of boldly going forth, add
+the -p to the end of the switch's first, to see whats going to be emerged. Then you
+can remove it.
+
+Example emwrap.sh -sep ==> emerge system --emptytree -pretend. If you remove the 
+   	-p it will do a build of all packages in system except for the TC. 
+   	${Yl}NOTE -se or -S do the same thing${NO} 
+emwrap.sh -set or -wet ==> updates the entire TC.  If the -b switch is used instead
+   	of -t then the entire TC is built and then all system/world packages minus
+   	toolchain files.
+
+Examples
+   	${CY}emwrap.sh${NO}  prints help.
+   	${CY}emwrap.sh -wuDbp${NO} Checks for updates to the TC and in the world.
+   	${CY}emwrap.sh -wuDt${NO}==>  emerge world -uD and only does TC update if any.
+   	${CY}emwrap.sh -wuDb${NO}==> updates, if any, the TC and then the world files.
+   	${CY}emwrap.sh -f{other flags}${NO} will fetch the files for you.
+   	${CY}emwrap.sh system -uDN${NO}==> emerge system -uDN, update deep newuse
+   	${CY}emwrap.sh -Sb1${NO}==> emerge system -e build TC once and then system files
+
+ emwrap.sh can "emerge system -e" with or without the TC and remove all packages
+   	built during the system emerge for a following "emerge world -e". This is a major
+   	time savings as 130+ packages wont be rebuilt during the world half.
+   	${RD}NOTE -d -c -r have been changed${Rd}. -d is now -S, -W takes on the old
+   	role of -r.	-r is now resume and -c has been removed.${NO} 
+   	${CY}emwrap.sh -Sb${NO} ,builds TC and system -e. When it completes run
+   	${CY}emwrap.sh -W${NO} ,this picks where -Sb stopped and builds the rest of
+   	the files in the " world -e ". Why use this, well if you want to break an
+   	" emerge world -e " up into 2 chunks for two different nights this will do it.
+
+Here are the TC build list used in this wrapper when doing updates. The first 3 are
+   	double builds.
+   	If linux-headers	TC="linux-headers glibc \$tc_conf binutils gcc glibc binutils gcc"
+   	If glibc		TC_glb="glibc \$tc_conf binutils gcc glibc binutils gcc"
+   	If binutils or gcc	TCmini="\$tc_conf binutils gcc binutils gcc"
+These are the single build TC list
+   	If linux-headers	TC1="linux-headers glibc \$tc_conf binutils gcc "
+   	If glibc		TC_glb1="glibc \$tc_conf binutils gcc "
+   	If binutils or gcc	TCmini1="\$tc_conf binutils gcc"
+
+The TC build scripts are basically fall through. If you have a linux-headers update
+   	then the script will use TC, if its a glibc update then TC_glib and
+   	if binutils and/or gcc then TCmini. To force a full TC build use -set, -St or
+   	-wet or -seb, -Sb or -web.
+
+If you used "exclude" when you last ran emwrap.sh and you dont use "exclude" again
+	all the packages thet were execulded will be listed and an offer to now build
+	them is made. if you enter any key + ENTER it will build useing the exclude
+	list from your last run. If you used exclude during an -uD, update deep, then
+	you can just re-run useing -uD and anything still haveing an update will be updated.
+	Where this comes in handy is if you have kde and or gnome. To split out kde and
+	gnome to build later nights you could do something like 1st night emwrap -wuDX kde
+	gnome. 2nd night emwrap.sh -wuDX kde, this builds gnome but not kde. 3rd night
+	night emwrap.sh -wuD. What happens is that exclude.lst is detected 
+ 
+END
+exit
+}
+
+
+function color(){
+	if [[ $nc != "yes" ]]; then
+		#Set up colors
+		NO=$'\x1b[0;0m'
+		BR=$'\x1b[0;01m'
+		RD=$'\x1b[31;01m' Rd=$'\x1b[00;31m'
+		GR=$'\x1b[32;01m' Gr=$'\x1b[00;32m'
+		YL=$'\x1b[33;01m' Yl=$'\x1b[00;33m'
+		BL=$'\x1b[34;01m' Bl=$'\x1b[00;34m'
+		FC=$'\x1b[35;01m' Fc=$'\x1b[00;35m'
+		CY=$'\x1b[36;01m' Cy=$'\x1b[00;36m'
+	fi
+}
+
+source /etc/make.conf
+
+########  Variables ############################
+bclass="none";eargs=""; count="0"
+nc="" ;do_tc="";tc_once="";do_sys="";do_wrld="";both="";resume="";ftch=""
+tc="no"
+# Had to give "exclud" a dummy value. If its set to "" everything is filtered out 8^(
+exclud="catsisrats"; exclude_list="catsisrats" ; quite="" ; tc_stdc="" ; cat_stdc=""
+WORK_DIR=""
+TIME=5  # sets the time the script displays failed_build info
+
+function version_info(){ 
+	echo "${GR}        ${PROG}  Version-${RD}${VERSION} "${NO}
+	echo "${Gr} ${DESC}${NO}"
+	echo "${Rd} ${DATE}${NO}"
+	exit 1
+}
+
+function info(){
+	clear
+	cat	<<-END
+	${GR} Running ${RD}$PROG $VERSION $DATE
+	${GR} If emwrap.sh is run and it detects a ${CY}"failed' or "build"${GR} file 
+	${GR} then it will offer to build them. You can ignor this by not doing  
+	${GR} anything and what you wanted todo will start after automaticlly.
+	END
+}
+
+function build_info(){
+	echo
+	cat <<-END
+	${Yl}You can now enter ${RD}" r "${Yl} to resume building. If you dont enter anything
+	then the old build file will be deleted.and ${Rd}emwrap.sh $bclass -$eargs${Yl} will
+	continue. If you want to stop and scratch your head do a CRTL-C${NO} 
+	END
+}
+
+function faild_info(){
+	echo
+	cat <<-END
+	${Yl}You can now enter ${RD}" f "${Yl} to build the faild file list.If you dont enter
+	anything then the faild file will be deleted and ${Rd}emwrap.sh $bclass -$eargs${Yl}
+	will continue. You only need to run ${Rd}"emwrap.sh faild"${Yl} after doing a 
+	emptytree system or world. If you want to stop and scratch your head do a CRTL-C${NO} 
+	END
+}
+
+function exclude_info(){
+	echo
+	cat <<-END
+	${Yl}You can now enter ${RD}" x "${Yl} to build the exculded file list.If you dont enter
+	anything then the excluded file will be deleted and ${Rd}emwrap.sh $bclass -$eargs${Yl}
+	will be run. If you want to stop and scratch your head do a CRTL-C${NO} 
+	END
+}
+
+# changing work dir to $WORK_DIR/emwrap
+function wrk_dir(){
+   # change file locations to $WORK_DIR/emwrap/{FILES}
+   # Changed to explicit directory invoke, because if used to build a system from scratch,
+   # ergo a new build, $HOME isn't set and every thing for root is written to " / ".
+	if [ -e ~/.emwrap ]; then
+		source ~/.emwrap
+	fi
+	echo;echo "work_dir is $WORK_DIR"
+	# If ".emwrap" exist then WORK_DIR will be what you set up, else it defaults to
+	# "/tmp/emwrap"
+	WORK_DIR=${WORK_DIR:-/tmp}
+	
+	if [ ! -d  $WORK_DIR/emwrap ];then
+		mkdir $WORK_DIR/emwrap;chmod 777 $WORK_DIR/emwrap; cd $WORK_DIR/emwrap
+	else
+		cd $WORK_DIR/emwrap
+	fi
+
+	if [ "$(pwd)" != "$WORK_DIR/emwrap" ] ;then
+		echo;echo $RD"Did not change to /tmp/emwrap. Bailing out!"$NO;echo
+		exit 1
+	fi
+}
+
+# gets "read input" for "chk_failed_build" function following. It un-cluters
+# "chk_failed_build".Also used for eselect.
+function read_input(){
+#   if [ "${resume}" != "yes" ] && [ "$failed" != "yes" ] ; then 
+		OUTPUT="no"
+		for loop_counter in 14 12 10 8 6 4 2 0 ; do
+		echo -n ${RD} "$loop_counter "${NO}
+		read -t 2 INPUT
+			if [ "$?" == "0" ] ; then
+				OUTPUT="yes"
+				export OUTPUT
+				# As soon as that DUMB ASS in front of the screen gets off thier ass
+				# and does an "f" or an "r" ENTER, I can quit counting backwards !!!
+				break 1
+			fi
+		done
+#   fi	
+}
+
+function chk_failed_build(){
+    if [ "$resume" != "yes" ]; then
+		if [ "$failed" == "yes" ]; then
+			mv failed build
+			resume="yes"
+		elif [[ -e failed || -e build || -e exclude.lst ]]; then
+			if [ -s build ]; then
+				echo $RD "these remain to build"$NO
+				cat build
+				build_info
+				read_input
+				resume="$OUTPUT"
+				if [ "${resume}" != "yes" ]; then
+					echo;echo "	$Yl Input was empty I will continue with emwrap.sh $bclass -$eargs"
+					rm $WORK_DIR/emwrap/build
+				fi 
+			elif [[ -s failed && ! -e build ]]; then
+				echo $RD "these failed to build"$NO
+				cat  failed
+				faild_info
+				read_input
+				failed="$OUTPUT"
+				if [ "${failed}" == "yes" ]; then
+					mv failed build
+					resume="yes"
+				elif [ ${failed} == "no" ]; then
+					echo;echo "	$Yl Input was empty I will continue with emwrap.sh $bclass -$eargs"
+					rm $WORK_DIR/emwrap/failed
+				fi
+			elif [ -s exclude.lst ] ; then
+				echo ${RD}"These were excluded can now be built"${NO}
+				cat exclude.lst
+				exclude_info
+				read_input
+				exclude="$OUTPUT"
+				if [ "${exclude}" == "yes" ]; then
+					mv exclude.lst build
+					resume="yes"
+				elif [ "${exclude}" != "yes" ]; then
+					echo;echo " $Yl Input was empty I will continue with emwrap.sh $bclass -$eargs"
+					rm $WORK_DIR/emwrap/exclude.lst
+				fi
+			fi
+		fi
+		# keeps exclude.lst from becomeing hugh if emwrap.sh -X is run multiple times.
+		if [ -e excluds.lst ]; then
+			rm $WORK_DIR/emwrap/eexclude.lst
+		fi
+    fi
+}
+
+# For cleaning files. if's to keep rm from complaining
+function clean_up(){
+    if [ -s failed ] ; then
+		echo;echo ${RD} "these failed to build"${NO}
+		cat  failed
+    elif [[ -e failed && ! -s failed ]]; then
+		rm failed
+    fi
+    
+    if [ -s build ] ; then
+		echo;echo ${RD} "these remain to build" ${NO}
+		cat build
+    elif [[ -e build && ! -s build ]] ; then
+		rm build
+    fi
+    
+    if [ -s exclude.lst ] ; then
+        echo;echo ${RD} "these were excluded and can be built"${NO}
+        cat  exclude.lst
+    elif [[ -e exclude && ! -s exclude ]]; then
+        rm exclude.lst
+    fi
+    
+    # clean up
+	if [ -e sys.lst ] ; then rm sys.lst ; fi
+    if [ -e wrld.lst ] ; then rm wrld.lst ; fi
+    if [ -e wrld.tmp ] ; then rm wrld.tmp ; fi
+    if [ -e sys.lst ] ; then rm ssys.lst ; fi
+    if [ -e wrld.lst ] ; then rm swrld.lst ; fi
+    if [ -e sorted.lst ] ; then rm sorted.lst ; fi
+}
+ 
+function getargs(){
+	if [ $# -eq 0 ]; then
+		print_help
+	fi
+	# LONG OPTIONS
+	while [[ $1 != "" ]]; do
+		if echo $1|grep -v - ; then
+			case $1 in
+				system	)   bclass="system" ;;
+				world	)   bclass="world" ;;
+				help	)   print_help ;;
+				resume	)   resume="yes" ;;
+				nc	    )   nc="yes" ;;
+				failed	)   failed="yes";;
+				ignore-default-opts) largs="ignore-default-opts" ;; 
+				exclude )   shift
+							while [[ $1 != "" ]]; do
+								if [ "$exclud" == "catsisrats" ]; then
+									exclud="$1"
+								else
+									exclud="$1|$exclud"
+								fi
+								# adding exclude_list for greping of pkg's
+								exclude_list="$exclude_list $1"
+								shift
+							done;;
+				version )   version_info ;;
+				* )   echo ${RD}"$OPT is not a valid long flag" ; exit 1 ;;
+			esac
+		fi
+
+ 		while getopts "1bDefgGhKkNpqrSWstuwVX*" OPT; do
+			case $OPT in
+				s ) bclass="system" ;;
+				w ) bclass="world" ;;
+				D ) eargs="${eargs}${OPT}" ;;
+				e ) eargs="${eargs}${OPT}" ;;
+				N ) eargs="${eargs}${OPT}" ;;
+				u ) eargs="${eargs}${OPT}" ;;
+				g ) eargs="${eargs}${OPT}" ;;
+				G ) eargs="${eargs}${OPT}" ;;
+				k ) eargs="${eargs}${OPT}" ;;
+				K ) eargs="${eargs}${OPT}" ;;
+				q ) eargs="${eargs}${OPT}" ; quite="q";;
+				1 ) tc_once="yes" ;;
+				h ) print_help ;;
+				p ) eargs="${eargs}${OPT}" ; prtnd="p" ;;
+				f ) ftch="f" ;;
+				S ) do_sys="yes" ;bclass="system" ;eargs="e" ;;
+				W ) do_wrld="yes" ;bclass="system" ;eargs="e";;
+				b ) both="yes";; 
+				r ) resume="yes" ;;
+				t ) do_tc="yes" ; Tc="yes";;
+				V ) version_info ;;
+				X ) shift
+					while [[ $1 != "" ]]; do
+						if [ "$exclud" == "catsisrats" ]; then
+							exclud="$1"
+						else
+							exclud="$1|$exclud"
+						fi
+						# adding exclude_list for greping of pkg's
+						exclude_list="$exclude_list $1" 
+					shift
+					done;;
+				? )  echo ${Rd}"$1 is not a valid flag string"; exit 1 ;;
+			esac
+		done
+		shift
+	done
+	if [ "$bclass" == "none" ] ; then
+		echo ${RD}"You didnt select world or system so no, emwrap.sh"${NO}
+		echo ${RD}"isnt broken,but you are just as dumb as me!"${NO}
+		exit 1
+	fi
+}
+
+# emerges from build list and keeps count.
+function build_count(){
+	count="0" ; s=$(wc -l build)
+	for z in $(< build) ;do
+		count=$(( count + 1 )) 
+		echo -n "${Yl}${count} of ${s} "${NO} 
+		# Added gcc_config which will run only when the TC is being updated.
+		{ 
+			emerge -O1${prtnd}${ftch}${quite} =${z} \
+	    	&& gcc_config ${z}
+        # The $1 is for which failed function, emerge_faild or tc_failed, is to be used.
+		} || $1
+		grep -v "${z}" build>tmp;mv tmp build
+    done
+}
+
+# merg_faild records which package fails to emerge buid_count 
+function emerge_faild(){
+    echo "${z}">> failed
+}
+
+# The next 4 functions are TC functions
+# tc_faild bails out of the build_count if emerge error
+function tc_faild(){
+    echo ${RD}"${z} failed to build. Stopping script."${NO}
+    exit 65
+}
+
+function tc_filter(){
+    awk "!/linux-head|glibc|gcc-[0-9]+|binutils-[0-9]+|libstdc+/"
+}
+
+function tc_check(){
+    # testing for TC components
+    # 3-27-06 removed awk when I put emerge tc in tc_emerge function to getting
+    # specific version info also changed gcc and binutils regex. 5-18-06 Changed
+    # libstdc testing, if you have build it, if not, don't.
+    if grep -Eq linux-h wrld.lst
+		then tc="linux-headers"
+    elif grep -Eq glibc wrld.lst
+		then tc="glibc"
+    elif grep -Eq binutils-[0-9].* wrld.lst
+		then tc="binutils"
+    elif grep -Eq gcc-[0-9].* wrld.lst
+		then tc="gcc"
+    elif grep -Eq libstdc+  wrld.lst
+		then tc="libstdc" ; tc_stdc="libstdc++-v3" ; cat_stdc="sys-libs/"
+    fi
+	#shows what TC items have updates
+	if [[ $do_tc == "yes" || $both == "yes" ]] ; then
+		if [ -n "$tc" ] ;then
+			echo;echo $RD"	   ToolChain updates found"$NO;echo
+			echo ${Rd}"		$tc"${NO}
+			echo;echo $BL"======================================================"$NO
+			echo
+		else
+			echo;echo ${RD}"	No toolchain update "${NO};echo
+		fi
+		# for getting and building config tools in an TC build. Added libstdc so that
+		# variable tc_stdc could be set, its wasnt being reached if anything above it passed.
+		tc_conf="" ; tc_conf_regx=""
+		if grep -Eq binutils-config wrld.lst ;  then
+			tc_conf="sys-devel/binutils-config $tc_conf"
+			tc_conf_regx="binutils-config $tc_conf_regx" ; fi
+		if grep -Eq gcc-config wrld.lst ; then
+			tc_conf="sys-devel/gcc-config $tc_conf"
+			tc_conf_regx="gcc-config $tc_conf_regx" ; fi
+		if grep -Eq eselect-compiler wrld.lst ; then
+			tc_conf="app-admin/eselect-compiler $tc_conf"
+			tc_conf_regx="eselect-compiler $tc_conf_regx" ; fi
+		if grep -Eq eselect-[0-9].+ wrld.lst ; then
+			tc_conf="app-admin/eselect $tc_conf"
+			tc_conf_regx="eselect-[0-9].* $tc_conf_regx"; fi 
+		if grep -Eq libstdc+  wrld.lst ; then
+			tc_stdc="sys-libs/libstdc++-v3" ; fi
+		# added awk filter so not to build these two twice 4-1-06
+		awk '!/binutils-config|gcc-config|eselect-[0-9].+|eselect-comp/' wrld.lst >tmp
+		mv tmp wrld.lst
+	fi
+}
+
+function tc_emerge(){
+    # added tc-once to build TC once only which is what I do. 3-27-06 changed list
+    # for useing tighter regex in grabing version explict TC items to feed tc_emerge.
+    # CHanged libstdc to a variable so that if you dont have libstdc I wont give you a stdc ;^P 
+    TC="linux-headers glibc $tc_conf_regx binutils-[0-9].* gcc-[0-9].* glibc binutils-[0-9].* gcc-[0-9].* $tc_stdc"
+    TC_glb="glibc $tc_conf_regx binutils-[0-9].* gcc-[0-9].* glibc binutils-[0-9].* gcc-[0-9].* $tc_stdc"
+    TCmini="$tc_conf_regx binutils-[0-9].* gcc-[0-9].* binutils-[0-9].* gcc-[0-9].* $tc_stdc"
+    TC1="linux-headers glibc $tc_conf_regx binutils-[0-9].* gcc-[0-9].* $tc_stdc"
+    TC_glb1="glibc $tc_conf_regx binutils-[0-9].* gcc-[0-9].* $tc_stdc"
+    TCmini1="$tc_conf_regx gcc-[0-9].* binutils-[0-9].* $tc_stdc"
+    # Added tc build list for getting version info
+    TC_build="sys-kernel/linux-headers sys-libs/glibc $tc_conf sys-devel/binutils sys-devel/gcc $tc_stdc"
+	if [[ "${resume}" != "yes" ]];then  #prevents filling the build list after a failed TC resume
+		if [[ $tc_once != "yes" ]];then
+			case ${tc} in
+				linux-headers   )  tc_regx=$TC;;
+				glibc       )  tc_regx=$TC_glb;;
+				gcc         )  tc_regx=$TCmini;;
+				binutils    )  tc_regx=$TCmini;;
+				libstdc     )  tc_regx=$TCmini;;
+			esac
+		else
+			case ${tc} in
+				linux-headers   )  tc_regx=$TC1;;
+				glibc	    )  tc_regx=$TC_glb1;;
+				gcc         )  tc_regx=$TCmini1;;
+				binutils    )  tc_regx=$TCmini1;;
+				libstdc	    )  tc_regx=$TCmini1;;
+			esac
+		fi
+	fi
+    # if for determining if build is empty before refilling it.
+    if [ ! -e build  ] || [[ -e build && ! -s build ]];then
+		# added emerge to get the version specific info. It also sorts the tc packages.
+		:>tc.lst
+		emerge -qp $(echo $TC_build) |grep "/"|cut -c17-65|cut -f1 -d " " >tc.lst
+			for t in $(echo $tc_regx); do
+				grep $t tc.lst>>build
+			done
+	fi
+	echo $RD"$(< build)"$NO;echo
+	build_count tc_faild
+	echo;echo ${Rd}"End of ToolChain update"${NO};echo
+	tc="no"
+	rm tc.lst
+}
+
+
+function gcc_config(){
+	# The eselect added 7-7-06 A varition of mcquires gcc-config
+	if [ "$tc" != "no" ] ; then
+		if echo "$1" | grep "gcc-[0-9].*" ; then
+		# Adding maguire's gcc_config  setup here
+			gcc_current=""
+			gcc_new_version_number=""
+			gcc_for_gcc_config=""
+			gcc_current_no_dot=""
+			gcc_version_number_no_dot=""
+		###############################################################
+		# Let games begin
+		###############################################################
+			#10-14-07 switched to CHOST usage so that i686, x86_64 and whaterver else are picked up.
+			#10-15-07 added test for "config" or "config-"${CHOST}"
+			if [[ -e "/etc/env.d/gcc/config" ]] ;then
+				gcc_current=$(sed 's/^.*\([0-9]\.[0-9]\.[0-9]\)/\1/' /etc/env.d/gcc/config)
+			elif [ -e "/etc/env.d/gcc/config-"${CHOST}"" ] ; then
+				gcc_current=$(sed 's/^.*\([0-9]\.[0-9]\.[0-9]\)/\1/' /etc/env.d/gcc/config-"${CHOST}")
+			fi
+			# $1 is the "gcc-version" that the function build-count, passes to function gcc_config
+			gcc_new_version_number=$( echo "$1" |sed 's/^.*\([0-9]\.[0-9]\.[0-9]\).*/\1/')
+			## echo "${gcc_new_version_number} TEST TEST TesT CHOST"
+			# For selecting the highest version gcc
+			if echo "$1" | grep -Eq "gcc-[0-9].*" ; then
+				# stripping out the dots 4.1.1 ==> 411
+				gcc_current_no_dot=$(echo ${gcc_current} | sed 's/\.//g')
+				gcc_version_number_no_dot=$(echo ${gcc_new_version_number} | sed 's/\.//g')
+				# Now finding which no_dot is larger
+				if [ "${gcc_current_no_dot}" -eq "${gcc_version_number_no_dot}" ] ; then
+					high_gcc="${gcc_new_version_number}"
+				elif [ "${gcc_current_no_dot}" -lt "${gcc_version_number_no_dot}" ] ; then
+					high_gcc="${gcc_new_version_number}"
+				else
+					high_gcc="${gcc_current}"
+				fi
+				
+				gcc_for_gcc_config="${CHOST}-${high_gcc}"
+				# Select the new GCC version for future compilations:
+				echo
+				echo "${Rd}BEFORE selecting new GCC:${CY}"
+				gcc-config -l
+				echo
+				# Changed output of pretend to be more readable.Sun May 28 23:20:39 new time stamp.
+				# For testing. use the first "if"
+				#if [ "$prtnd" != "p" ] ; then
+				if [ "$prtnd" == "p" ] ; then
+					echo "${BL}**********************************************************************${nc}"
+					echo
+					echo "${Yl} I would do:${CY} # gcc-config -f ${gcc_for_gcc_config}${nc}"
+					echo
+					echo "${BL}**********************************************************************${nc}"
+					echo
+				else
+					echo "${BL}**********************************************************************${nc}"
+					echo "${Yl} I'm going to execute:  # gcc-config ${gcc_for_gcc_config}${nc}"
+					echo "${BL}**********************************************************************${nc}"
+					echo "${Yl} Kill me NOW, or forever hold your peace!${nc}"
+					echo "${Yl} (sleeping for 10 seconds...)${nc}"
+					for loop_counter in 1 2 3 4 5 6 7 8 9 10;do
+						echo -n "$loop_counter "
+						sleep 1
+					done
+					echo
+					echo "${Rd}(continuing...)${nc}"
+					gcc-config -f "$gcc_for_gcc_config" \
+						|| {
+							return_code=$?
+							echo "${RD}ERROR:${nc} ${Rd}gcc-config $gcc_for_gcc_config failed!${nc}" >&2
+							exit $return_code
+							}
+					echo
+					echo "${RD}AFTER selecting new GCC:${nc}"
+					gcc-config -l
+					echo
+					echo "${Yl}Now sourcing /etc/profile${nc}"
+					source /etc/profile
+					echo
+				fi
+			fi
+		fi
+	fi
+}
+
+function exclude_filter(){
+	#First run grep and put the excluded files into exclude.lst 
+	for line in "$(echo $exclude_list)"; do
+		grep "$line" wrld.tmp >>exclude.lst
+	done
+	awk "!/$exclud/" wrld.tmp > wrld.lst
+}
+
+# generates the the build list, checks for blocked & masked pkgs
+function wrld_lst(){
+	# If for blocking regeneration of list if resume or do_tc is used
+	# Added exclude_filter to filters here. That way it works "W" 5-8-06
+	#if [ "$resume" != "yes"  ];then
+	if [[ "$resume" != "yes" && "$failed" != "yes" ]];then	
+		emerge $bclass -${eargs}pq >wrld.lst
+		# checking for blocked or masked packages
+			if grep "blocks" wrld.lst ; then
+				echo
+				cat <<-END
+				${Yl}You have packages ${RD}blocking${Yl} each other. To fix run emerge
+				and take care of the blockage${NO}
+			END
+				echo
+				exit
+			elif grep "masked" wrld.lst ; then
+				echo
+				cat <<-END
+				${Yl}You have ${RD}masked${Yl} ebuilds. If its keyword masked add it
+				to /etc/portage/package.keywords. For more info see man emerge.${NO}
+			END
+				echo
+				exit
+			fi
+		# Changed slice dice 5-5-06
+		#  wrld.lst includes TC files if any. Which if your doing -W, a world-system emerge means they
+		# get filtered out of the world list along with the system files
+		# removed sed -e 's/USE=.*//' -e 's/\[[0-9].*//' for cut. Sed is to specific re modular X's VIDEO_CARDS
+		#grep "/" wrld.lst | cut -c17-65 | cut -f1 -d " " | exclude_filter >>wrld.tmp
+		grep "/" wrld.lst | cut -c17-65 | cut -f1 -d " " >>wrld.tmp
+		if [ "$exclude.lst" != "catsisrats" ]; then
+			for line in "$(echo $exclude_list)"; do
+				grep "$line" wrld.tmp >>exclude.lst
+			done
+		fi
+		awk "!/$exclud/" wrld.tmp > wrld.lst
+		rm wrld.tmp
+		#mv wrld.tmp wrld.lst
+	fi
+}
+
+# The general purpose emerge function
+function emerge_from_list(){
+	# blocks do_tc from running emerge_from_list with prntd
+	if [[ "$resume" != "yes" && "$failed" != "yes" ]] ;then
+		#if [[ "$resume" != "yes" ]] ;then
+		cat wrld.lst | tc_filter >> build 
+	fi
+	# Now emerge	
+	echo;echo -n ${YL}"$(wc -l build) to emerge "${NO}
+	build_count emerge_faild
+}
+
+# This is for the generation of the world files minus the system files and building them
+function World_minus_system_emerge(){
+	# stops regenerating the build file if your resuming build
+	if [ "$resume" != "yes" ]; then
+	# wrld_list already run for system files.
+	cat wrld.lst >sys.lst
+	# filters out sys and TC files and puts the results into into the build list.
+		if  [ "${do_wrld}" ==  "yes" ] ; then
+			bclass="world";eargs="eq"
+			# Calling wrld_lst function. It generates all the list
+			wrld_lst >wrld.lst
+			# It seems crazy but using sort comm and then re-ordering the resulting list is
+			# faster than a for loop and grep -v  8} 
+			sort sys.lst>ssys.lst ; sort wrld.lst>swrld.lst
+			comm -1 -3 ssys.lst swrld.lst > sorted.lst
+			for i in $(< wrld.lst);do 
+				grep $i sorted.lst>>build
+			done
+		fi
+	fi
+    # Now to build what was not removed by removing the system files
+    sleep 1
+    echo;echo -n ${YL}"$(wc -l build) to emerge "${NO}
+    build_count emerge_faild
+}
+
+# Main where the functions are called and things get done.
+trap "exit 1" 1 2 3 15 
+color
+getargs $@
+info
+wrk_dir
+chk_failed_build
+wrld_lst
+
+#for doing resume
+if [ "$resume" == "yes" ]; then
+    emerge_from_list
+fi
+
+# for doing the excluded list
+if [ "$exclude" == "yes" ]; then
+    mv exclude build
+    emerge_from_list
+fi
+
+# For building the TC
+if [[ "$do_tc" == "yes" || "$both" == "yes" ]];then
+    tc_check
+    if [ "$tc" != "no" ];then
+        tc_emerge
+    fi	
+fi
+
+# For most of the emerges inculding -S
+if [[ "$do_tc" != "yes" && "$do_wrld" != "yes" ]] && [[  "$both" == "yes" || -n "$bclass" ]]; then
+    emerge_from_list	
+fi
+
+
+# does world --emptytree MINUS the system files
+if [ "$do_wrld" == "yes" ]; then
+    # system files already generated now removal
+    World_minus_system_emerge
+fi
+
+
+clean_up
+exit
+
+# vim:set ts=4 sw=4:

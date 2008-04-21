@@ -10,7 +10,7 @@ exec csi -ss $0 "$@"
  (compiling
   (declare
    (uses library extras posix utils regex srfi-1 srfi-13 srfi-69))
-  (use args miscmacros)
+  (use args)
   (declare
    (uses magister-variables magister-paludis magister-shell)
    (standard-bindings)
@@ -22,7 +22,7 @@ exec csi -ss $0 "$@"
                        parse-options check-environment)))
  (else
   (use extras posix utils regex srfi-1 srfi-13 srfi-69)
-  (use args miscmacros)
+  (use args)
   (use magister-variables magister-paludis magister-shell)))
 
 ;;; clear the PALUDIS_OPTIONS env var.
@@ -123,39 +123,41 @@ will be installed.")
 
 ;;; Action-list generation
 ;; (generate-toolchain-list): Creates a list of toolchain packages to be reinstalled.
-;; linux-headers glibc libtool binutils (gmp mpfr) gcc ?libstdc++-v3 ?gcc:3.3
+;; headers: linux-headers glibc binutils (gmp mpfr) gcc glibc binutils (gmp mpfr) gcc
+;; glibc: glibc binutils (gmp mpfr) gcc glibc binutils (gmp mpfr) gcc
+;; gcc|binutils: binutils (gmp mpfr) gcc binutils (gmp mpfr) gcc
 (define (generate-toolchain-list state)
   (let* ([package-table (make-hash-table string-ci=? string-ci-hash)]
-	 [toolchain-list (list (extract-package state "linux-headers"))]
-	 [libstdc++?
-	  (system-execute-action "paludis --match sys-libs/libstdc++-v3 &>/dev/null")]
-	 [gcc-3.3?
-	  (system-execute-action "paludis --match sys-devel/gcc:3.3 &>/dev/null")]
+	 [toolchain-list '()]
 	 [mpfr? #f])
+    ;; Extract packages
     (for-each (lambda (package) (hash-table-set! package-table package (extract-package state package)))
-	      '("glibc" "libtool" "binutils" "gcc"))
+	      '("linux-headers" "glibc" "binutils" "gcc"))
     (set! mpfr? (or (>= 4.3 (string->number (string-drop (package-slot (hash-table-ref package-table "gcc")) 1)))
-                    (and (string-match ":4\\..*" (package-slot (hash-table-ref package-table "gcc")))
+                    (and (>= 4.0 (string->number (string-drop (package-slot (hash-table-ref package-table "gcc")) 1)))
                          (built-with-use? (hash-table-ref package-table "gcc") "fortran"))))
-    (when libstdc++?
-      (hash-table-set! package-table "libstdc++" (extract-package state "libstdc++-v3")))
-    (when gcc-3.3?
-      (hash-table-set! package-table "gcc-3.3" (extract-package state "sys-devel/gcc:3.3")))
     (when mpfr?
       (hash-table-set! package-table "gmp" (extract-package state "gmp"))
       (hash-table-set! package-table "mpfr" (extract-package state "mpfr")))
-    (repeat 2
-            (for-each (lambda (package-name)
-                        (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table package-name)))))
-                      '("glibc" "libtool" "binutils"))
-            (when mpfr?
-              (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "gmp"))))
-              (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "mpfr")))))
-            (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "gcc")))))
-    (when gcc-3.3?
-      (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "gcc-3.3")))))
-    (when libstdc++?
-      (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "libstdc++")))))
+    ;; Construct the list
+    (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "linux-headers"))))
+    (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "glibc"))))
+    (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "binutils"))))
+    (when mpfr?
+      (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "gmp"))))
+      (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "mpfr")))))
+    (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "gcc"))))
+    (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "glibc"))))
+    (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "binutils"))))
+    (when mpfr?
+      (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "gmp"))))
+      (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "mpfr")))))
+    (set! toolchain-list (append toolchain-list (list (hash-table-ref package-table "gcc"))))
+    ;; done building list
+    (when (verbose? state)
+      (for-each
+       (lambda (package) (display (string-append (package-name package) "-" (package-version package))))
+       toolchain-list))
     toolchain-list))
 
 ;; (generate-action-list): Generates a list of actions and passes it to execute-action-list.
