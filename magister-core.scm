@@ -52,9 +52,7 @@ exec csi -ss $0 "$@"
 making one's installation consistent after a toolchain version or *FLAG change.
 It *does not* automagically detect what updates will be done and do it for you.
 It will not work binutils-config or gcc-config for you.
-It is most certainly *NOT* intended to be run *before* the new toolchain package
-is installed.
-*I* use it to make my system consistent *after* that has been done.
+*I* use it to make my system consistent when the toolchain changes.
 If you want a script that does more, WRITE ONE.
 
 Notes.
@@ -62,19 +60,14 @@ During package-list generation, \"toolchain\" is subtracted from \"system\",
 and \"system\" from \"everything\", in order to remove unnecessary
 compilation and minimize execution time.
 
-The toolchain is rebuilt in this order. As far as I know this is the \"correct\"
-order, if there is such a thing:
+These are the toolchain rebuild scripts. It is up to you to choose the correct one.
 
-  linux-headers glibc binutils (gmp mpfr) gcc glibc binutils (gmp mpfr) gcc
+  linux-headers:  linux-headers glibc binutils (gmp mpfr) gcc glibc binutils (gmp mpfr) gcc
+  glibc:          glibc binutils (gmp mpfr) gcc glibc binutils (gmp mpfr) gcc
+  gcc|binutils:   binutils (gmp mpfr) gcc binutils (gmp mpfr) gcc
 
 GMP and MPFR are dependent on the version of gcc detected, and - for versions
-earlier than 4.3 - whether the fortran USE-flag is enabled.
-
-After that's done, if its present,
-
-  libstdc++-v3
-
-will be installed.")
+earlier than 4.3 - whether the fortran USE-flag is enabled.")
       (newline)
       (print "Examples:
   magister -t                        Rebuild the toolchain.
